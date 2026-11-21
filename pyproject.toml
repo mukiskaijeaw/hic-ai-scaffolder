@@ -8,7 +8,12 @@ version = "0.1.0"
 description = "AI-assisted Hi-C scaffolding: CNN + GNN correction of YaHS / 3D-DNA scaffolds"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = ["numpy>=1.22", "torch>=2.0"]
+dependencies = [
+    "numpy>=1.22",
+    "torch>=2.0",
+    "hictkpy>=1.0",   # reads .hic / .cool / .mcool; binary wheels for Windows, macOS, Linux
+    "scipy>=1.8",     # fast sparse export from hictkpy
+]
 
 [project.optional-dependencies]
 plot = ["matplotlib"]
