@@ -83,7 +83,7 @@ hicscaf train --n-genomes 150 --cnn-epochs 8 --gnn-epochs 40 -o models/hicscaf.p
 ```
 
 ขั้นตอน: จำลองจีโนม → ฝึก JunctionCNN บน patch ของทุกรอยต่อใน draft → ใส่คะแนน CNN เป็น feature → ฝึก EdgeGNN (cross-entropy ถ่วงน้ำหนักคลาส)
-มีโมเดลที่ฝึกแล้วใน `models/hicscaf.pt` (~1.5 MB) ใช้ได้ทันที
+มีโมเดลที่ฝึกแล้วใน `models/hicscaf.pt` (~3.7 MB) ใช้ได้ทันที
 
 อยากให้เหมาะกับสิ่งมีชีวิตของคุณ: แก้ `simulate()` ให้ใช้ความยาวโครโมโซมจริง (`chroms={...}`),
 ความยาว contig และความลึก Hi-C ที่ใกล้ข้อมูลจริง แล้วฝึกใหม่
@@ -109,6 +109,8 @@ hicscaf correct --contigs contigs.fa --pairs hic.pairs.gz --agp 3ddna.agp -o hic
 ```
 
 `--min-prob` (ค่าเริ่ม 0.5) คุมความเข้ม: สูงขึ้น = ต่อน้อยลงแต่แม่นขึ้น
+
+ถ้าไม่มี `bwa`/`samtools` และมี Hi-C เป็น `.bed` แบบ YaHS อยู่แล้ว ส่งไฟล์ `.bed(.gz)` ให้ `--pairs` ได้ตรงๆ
 
 ---
 
@@ -144,7 +146,7 @@ hicscaf refine --draft pre_curation.agp --hic sample.mcool --resolution 5000 -o 
   ถ้า `.hic` ถูกสร้างจาก .assembly อีกไฟล์ (เช่นจาก review) ให้ระบุ `--layout-assembly that.assembly`; จีโนม > 2.1 Gb ใส่ `--scale`
 * `.hic` / `.mcool` ที่สร้างบน FASTA ของ scaffold ใช้ `--layout agp --layout-agp scaffolds.agp`
 * `.pretext` ยังอ่านไม่ได้ (format ปิด) — ใช้ `.mcool`/`.hic` แทน
-* ความละเอียด matrix ควร ≤ 5 kb; contig ที่สั้นกว่า 2–3 bin จะได้ข้อมูลน้อย
+* ใช้ resolution ละเอียดที่สุดที่ไฟล์มี (แนะนำ 1 kb): ในการทดสอบ ที่ 5–10 kb โมเดลยังจับ misjoin ข้ามโครโมโซมได้ไม่ครบ (ดู RESULTS.md)
 
 ---
 

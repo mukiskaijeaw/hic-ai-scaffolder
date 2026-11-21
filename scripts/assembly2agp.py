@@ -12,16 +12,20 @@ from collections import defaultdict
 frags = {}             # index -> (contig, beg, end)
 offset = defaultdict(int)
 scaffolds = []
+gaps = set()
 with open(sys.argv[1]) as fh:
     for line in fh:
         if line.startswith(">"):
             name, idx, length = line[1:].split()
+            if name.startswith("hic_gap_"):  # gap pseudo-fragments added by 3D-DNA finalize
+                gaps.add(int(idx))
+                continue
             base = name.split(":::")[0]
             beg = offset[base]
             frags[int(idx)] = (base, beg, beg + int(length))
             offset[base] += int(length)
         elif line.strip():
-            scaffolds.append([int(x) for x in line.split()])
+            scaffolds.append([int(x) for x in line.split() if abs(int(x)) not in gaps])
 
 gap = 500
 print("##agp-version 2.1")

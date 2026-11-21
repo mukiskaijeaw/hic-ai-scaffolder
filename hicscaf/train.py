@@ -13,6 +13,15 @@ from .scaffold import prepare, score_junctions
 from .simulate import simulate
 
 
+def bin_contacts(ct, lengths, res, rng):
+    """Quantise positions to `res` bins with a random phase per contig (approximates matrix binning)."""
+    from .io import Contacts
+    L = np.array([lengths[n] for n in ct.names])
+    phase = rng.integers(0, res, len(L))
+    q = lambda c, p: np.clip((p + phase[c]) // res * res + res // 2 - phase[c], 0, L[c] - 1)
+    return Contacts(ct.names, ct.c1, q(ct.c1, ct.p1), ct.c2, q(ct.c2, ct.p2), ct.w, res)
+
+
 def make_examples(seeds, pairs_per_mb=None, chroms=None, log=print):
     """One example per synthetic genome. Contact depth is varied so the model sees shallow and deep data."""
     out = []
@@ -20,6 +29,9 @@ def make_examples(seeds, pairs_per_mb=None, chroms=None, log=print):
         rng = np.random.default_rng(10_000 + s)
         ppm = pairs_per_mb or int(rng.choice([10_000, 20_000, 40_000, 80_000]))
         sim = simulate(seed=s, chroms=chroms, pairs_per_mb=ppm)
+        # half of the genomes look like a binned .hic/.mcool matrix (refine from precomputed outputs)
+        if rng.random() < 0.5:
+            sim.contacts = bin_contacts(sim.contacts, sim.lengths, int(rng.choice([1000, 2000, 5000, 10000])), rng)
         cs, g, patches, jkeys, jcls, bin_size, draft = prepare(
             sim.lengths, sim.contacts, sim.draft, cnn=None, true_adj_fn=lambda cs: adjacencies_from_truth(cs, sim.truth))
         true = adjacencies_from_truth(cs, sim.truth)

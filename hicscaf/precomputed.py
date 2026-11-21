@@ -32,17 +32,20 @@ from .io import Component, Contacts, Scaffold
 def read_assembly(path) -> tuple[list[Scaffold], dict[str, int]]:
     """Parse a 3D-DNA / Juicebox .assembly. Fragments `ctg:::fragment_2`, `ctg:::debris` are mapped
     back to coordinates on the original contig `ctg` (fragments are listed in order along each contig)."""
-    frags, offset, rows = {}, defaultdict(int), []
+    frags, offset, rows, gaps = {}, defaultdict(int), [], set()
     with open(path) as fh:
         for line in fh:
             if line.startswith(">"):
                 name, idx, length = line[1:].split()
+                if name.startswith("hic_gap_"):  # 3D-DNA finalize adds 500 bp gap pseudo-fragments
+                    gaps.add(int(idx))
+                    continue
                 base = name.split(":::")[0]
                 b = offset[base]
                 frags[int(idx)] = Component(base, b, b + int(length))
                 offset[base] += int(length)
             elif line.strip():
-                rows.append([int(x) for x in line.split()])
+                rows.append([int(x) for x in line.split() if abs(int(x)) not in gaps])
     scafs = [Scaffold(f"HiC_scaffold_{k}", [(frags[abs(i)], 1 if i > 0 else -1) for i in row])
              for k, row in enumerate(rows, 1)]
     return scafs, dict(offset)
