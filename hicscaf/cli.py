@@ -151,8 +151,10 @@ def cmd_random_ref(a):
 
 
 def cmd_studio(a):
-    from .studio import serve
-    serve(a.host, a.port, a.workdir, not a.no_browser)
+    from . import studio
+    if a.public:
+        studio.PUBLIC = True
+    studio.serve(a.host, a.port, a.workdir, not a.no_browser)
 
 
 def cmd_paf_truth(a):
@@ -238,7 +240,12 @@ def main(argv=None):
     p.set_defaults(fn=cmd_paf_truth)
 
     p = sp.add_parser("studio", help="open the hicscaf Studio web app (upload files, run, view results)")
-    p.add_argument("--host", default="127.0.0.1"); p.add_argument("--port", type=int, default=8765)
+    import os
+    p.add_argument("--host", default=os.environ.get("HICSCAF_HOST", "127.0.0.1"))
+    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8765)))
+    p.add_argument("--public", action="store_true",
+                   help="server mode for other people: uploads only (no server paths), size/job limits; "
+                        "set HICSCAF_PASSWORD to require a password")
     p.add_argument("--workdir", help="where uploads and results are kept (default ~/hicscaf_studio)")
     p.add_argument("--no-browser", action="store_true")
     p.set_defaults(fn=cmd_studio)

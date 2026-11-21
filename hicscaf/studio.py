@@ -113,12 +113,24 @@ class Job:
 JOBS: dict[str, Job] = {}
 
 
+# Server mode (hosted for other people): password, no access to server paths, upload / job limits.
+PUBLIC = os.environ.get("HICSCAF_PUBLIC", "") not in ("", "0", "false")
+PASSWORD = os.environ.get("HICSCAF_PASSWORD") or None
+MAX_UPLOAD = int(float(os.environ.get("HICSCAF_MAX_UPLOAD_MB", "4096")) * 1e6)
+MAX_JOBS = int(os.environ.get("HICSCAF_MAX_JOBS", "2"))
+
+
 def _resolve(p: str | None) -> str | None:
     if not p:
         return None
     p = p.strip().strip('"').strip("'")
     if not os.path.exists(p):
         raise ValueError(f"ไม่พบไฟล์: {p}")
+    if PUBLIC:  # only files that were uploaded through the page (or the demo)
+        root = Handler.workdir.resolve()
+        rp = Path(p).resolve()
+        if root not in rp.parents:
+            raise ValueError("โหมดเซิร์ฟเวอร์ใช้ได้เฉพาะไฟล์ที่อัปโหลดผ่านหน้าเว็บ")
     return p
 
 
@@ -155,7 +167,7 @@ def run_job(job: Job):
         # 1 read files ------------------------------------------------------------
         job.step = 0
         contigs, pairs, draft_p, hic, truth_p = (_resolve(P.get(k)) for k in ("contigs", "pairs", "draft", "hic", "truth"))
-        model = _resolve(P.get("model") or str(REPO_MODEL))
+        model = str(REPO_MODEL) if PUBLIC else _resolve(P.get("model") or str(REPO_MODEL))
         draft, lengths = (load_scaffolds(draft_p) if draft_p else (None, {}))
         if contigs:
             job.say(f"อ่านความยาว contig จาก {Path(contigs).name}")
@@ -179,7 +191,8 @@ def run_job(job: Job):
             names = list(lengths)
             layout = layout_from_assembly(draft, names) if draft_p.endswith(".assembly") else layout_from_agp(draft_p, names)
             job.say(f"อ่าน {Path(hic).name} ที่ความละเอียด {res:,} bp ({os.path.getsize(hic) / 1e9:.1f} GB)")
-            contacts = load_matrix_contacts(hic, layout, res, P.get("juicer_tools") or None, int(P.get("scale") or 1),
+            jt = None if PUBLIC else (P.get("juicer_tools") or None)  # never run a user-given jar on a server
+            contacts = load_matrix_contacts(hic, layout, res, jt, int(P.get("scale") or 1),
                                             progress=job.progress)
         else:
             if not contigs:
@@ -505,7 +518,8 @@ def env_info() -> dict:
             return False
     return {"hictk": has("hictkpy"), "hicstraw": True, "hic_builtin": True, "cooler": has("cooler"), "java": bool(shutil.which("java")),
             "torch": has("torch"), "model": str(REPO_MODEL) if REPO_MODEL.exists() else None,
-            "juicer_tools": os.environ.get("JUICER_TOOLS")}
+            "juicer_tools": os.environ.get("JUICER_TOOLS"), "public": PUBLIC,
+            "max_upload": MAX_UPLOAD if PUBLIC else None}
 
 
 # ----------------------------------------------------------------- server
@@ -555,7 +569,32 @@ class Handler(BaseHTTPRequestHandler):
             self._err("ไม่พบงานนี้ (โปรแกรมอาจถูกปิดแล้วเปิดใหม่)", 404)
         return j
 
+    def _authorised(self) -> bool:
+        """HTTP Basic auth when HICSCAF_PASSWORD is set (any user name, that password)."""
+        if not PASSWORD:
+            return True
+        import base64
+        import hmac
+        h = self.headers.get("Authorization", "")
+        if h.startswith("Basic "):
+            try:
+                pw = base64.b64decode(h[6:]).decode("utf-8", "replace").partition(":")[2]
+            except Exception:
+                pw = ""
+            if hmac.compare_digest(pw.encode(), PASSWORD.encode()):
+                return True
+        body = "ต้องใส่รหัสผ่าน (password required)".encode()
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="hicscaf Studio", charset="UTF-8"')
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        return False
+
     def do_GET(self):
+        if not self._authorised():
+            return
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         parts = [unquote(p) for p in u.path.strip("/").split("/") if p]
@@ -593,6 +632,8 @@ class Handler(BaseHTTPRequestHandler):
             self._err(str(e), 500)
 
     def do_POST(self):
+        if not self._authorised():
+            return
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         parts = [unquote(p) for p in u.path.strip("/").split("/") if p]
@@ -602,9 +643,12 @@ class Handler(BaseHTTPRequestHandler):
                 name = re.sub(r"[^\w.\-]+", "_", Path(q.get("name", "upload.bin")).name)
                 if kind in EXT and not name.lower().endswith(EXT[kind]):
                     return self._err(f"ชนิดไฟล์ไม่ถูกต้อง: ต้องเป็น {', '.join(EXT[kind])}")
+                n = int(self.headers.get("Content-Length") or 0)
+                if PUBLIC and n > MAX_UPLOAD:
+                    self.close_connection = True
+                    return self._err(f"ไฟล์ใหญ่เกิน {MAX_UPLOAD / 1e9:.1f} GB ที่เซิร์ฟเวอร์นี้รับได้", 413)
                 d = self.workdir / "uploads" / uuid.uuid4().hex[:8]
                 d.mkdir(parents=True, exist_ok=True)
-                n = int(self.headers.get("Content-Length") or 0)
                 with open(d / name, "wb") as fh:
                     left = n
                     while left > 0:
@@ -615,6 +659,8 @@ class Handler(BaseHTTPRequestHandler):
                         left -= len(chunk)
                 return self._json({"path": str(d / name), "name": name, "size": n})
             if parts[:2] == ["api", "check"]:
+                if PUBLIC:
+                    return self._err("โหมดเซิร์ฟเวอร์ไม่อนุญาตให้อ่านไฟล์จากเครื่องเซิร์ฟเวอร์ ให้อัปโหลดแทน", 403)
                 b = self._body()
                 p = (b.get("path") or "").strip().strip('"')
                 kind = b.get("kind", "")
@@ -626,6 +672,8 @@ class Handler(BaseHTTPRequestHandler):
             if parts[:2] == ["api", "demo"]:
                 return self._json(make_demo(self.workdir))
             if parts[:2] == ["api", "jobs"] and len(parts) == 2:
+                if PUBLIC and sum(j.state in ("queued", "running") for j in JOBS.values()) >= MAX_JOBS:
+                    return self._err("เซิร์ฟเวอร์กำลังประมวลผลงานอื่นอยู่ ลองใหม่อีกครั้งเมื่องานก่อนหน้าเสร็จ", 429)
                 b = self._body()
                 jid = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
                 outdir = self.workdir / "jobs" / jid
@@ -664,6 +712,8 @@ class StudioServer(ThreadingHTTPServer):
 
 
 def serve(host="127.0.0.1", port=8765, workdir=None, open_browser=True):
+    if PUBLIC and not PASSWORD:
+        print("คำเตือน: เปิดโหมดเซิร์ฟเวอร์โดยไม่มีรหัสผ่าน ใครที่มีลิงก์ก็ใช้ได้ (ตั้ง HICSCAF_PASSWORD)", flush=True)
     if workdir:
         Handler.workdir = Path(workdir)
     Handler.workdir.mkdir(parents=True, exist_ok=True)

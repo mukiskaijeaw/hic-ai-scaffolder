@@ -140,6 +140,24 @@ local search ที่ minimise Σ w·log(ระยะ)) ได้ `chr1..chrN` 
 ไฟล์งานเก็บที่ `~/hicscaf_studio` (เปลี่ยนด้วย `--workdir`) ทุกอย่างทำงานบนเครื่อง ไม่ส่งข้อมูลออกไปไหน
 ตัวเซิร์ฟเวอร์ใช้แค่ Python มาตรฐาน ไม่ต้องติดตั้งอะไรเพิ่ม
 
+## เปิดให้คนอื่นใช้ผ่านเว็บ (Host / deploy)
+
+Studio รันบนเครื่องของแต่ละคนเป็นหลัก ถ้าอยากให้คนอื่นกดลิงก์แล้วใช้ได้เลย ให้รันแบบเซิร์ฟเวอร์:
+
+**Hugging Face Spaces (ฟรี, CPU 2 core / RAM 16 GB):**
+1. สมัคร/ล็อกอิน https://huggingface.co แล้ว New Space → SDK = **Docker** → Blank → ตั้งเป็น Private หรือ Public
+2. อัปโหลดไฟล์ 2 ไฟล์จาก `deploy/huggingface/` (`Dockerfile`, `README.md`) เข้า Space
+3. Settings → Variables and secrets → New secret: `HICSCAF_PASSWORD` = รหัสผ่านที่จะแจกให้เพื่อน
+4. รอ build (~10 นาที) แล้วเปิดลิงก์ของ Space; ชื่อผู้ใช้ใส่อะไรก็ได้ รหัสผ่านตามข้อ 3
+5. อัปเดตโค้ด: Settings → Factory rebuild (ดึง `main` ล่าสุดจาก GitHub)
+
+**เครื่องอื่น / cloud ที่มี Docker:** `docker build -t hicscaf-studio .` แล้ว
+`docker run -p 7860:7860 -e HICSCAF_PASSWORD=... hicscaf-studio`
+
+โหมดเซิร์ฟเวอร์ (`HICSCAF_PUBLIC=1` หรือ `hicscaf studio --public`): ใช้ได้เฉพาะไฟล์ที่อัปโหลดผ่านหน้าเว็บ
+(ปิด "ใช้ path", ไม่รับ juicer_tools / model จากผู้ใช้), จำกัดขนาดไฟล์ `HICSCAF_MAX_UPLOAD_MB` (4096) และจำนวนงานพร้อมกัน
+`HICSCAF_MAX_JOBS`; ตั้ง `HICSCAF_PASSWORD` เสมอ ไฟล์บน Spaces ฟรีหายเมื่อ Space รีสตาร์ต ให้ดาวน์โหลดผลเก็บไว้
+
 ## ไม่มี raw reads? ใช้ผลที่ YaHS / 3D-DNA ทำเสร็จแล้ว (No raw reads needed)
 
 raw Hi-C reads ใหญ่มาก (หลายสิบ–หลายร้อย GB) แต่ `hicscaf` ต้องการแค่ **contact matrix** + **ลำดับ contig เดิม** ซึ่งมีคนทำไว้ให้แล้ว:
