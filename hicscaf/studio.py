@@ -285,6 +285,15 @@ def decode_and_write(job: Job, min_prob: float, n_chrom: int | None = None):
             job.progress(0.5)
         write_fasta(agp_to_fasta(scafs, c["seqs"]), out / "corrected.fa")
     if live:
+        job.progress(0.6)
+    from .hicwrite import can_write_hic, write_hic
+    if can_write_hic():
+        job.say("เขียน corrected.hic (เปิดใน Juicebox คู่กับ corrected.assembly)")
+        try:
+            write_hic(out / "corrected.hic", cs, c["mapped"], scafs, job_resolution(job.params) or 5000)
+        except Exception as e:  # never lose the other results over the viewer file
+            job.say(f"เขียน corrected.hic ไม่สำเร็จ: {e}")
+    if live:
         job.progress(0.85)
     edits = compute_edits(cs, draft, scafs, edges, probs, c["jscore"], c["dadj"], min_prob, dec_adj)
     with open(out / "edits.tsv", "w", encoding="utf-8") as fh:
@@ -314,7 +323,7 @@ def decode_and_write(job: Job, min_prob: float, n_chrom: int | None = None):
         from .cli import _load_truth
         t = _load_truth(c["truth"])
         res["eval"] = {"before": evaluate(draft, t), "after": evaluate(scafs, t)}
-    for f in ("corrected.assembly", "corrected.agp", "corrected.fa", "edits.tsv"):
+    for f in ("corrected.hic", "corrected.assembly", "corrected.agp", "corrected.fa", "edits.tsv"):
         if (out / f).exists():
             res["files"].append({"name": f, "size": (out / f).stat().st_size})
     (out / "summary.json").write_text(json.dumps({k: v for k, v in res.items() if k != "edits"}, indent=2))

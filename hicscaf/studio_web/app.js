@@ -172,7 +172,7 @@ function renderDetail(){const host=$("#detail");const e=S.sel!=null?S.res.edits.
   host.innerHTML=`<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span class="type"><i style="background:var(${T.c})"></i>${T.th}</span><span class="st ${sc}">${sl}</span></div>
   <h3 class="mono" style="font-size:1rem;overflow-wrap:anywhere">${esc(e.contigs[0])} ↔ ${esc(e.contigs[1])}</h3><p>${esc(e.detail)}</p>
   <dl class="dl"><dt>EdgeGNN</dt><dd>P = ${e.prob.toFixed(3)} · เกณฑ์ ${(+S.res.min_prob).toFixed(2)}</dd><dt>JunctionCNN</dt><dd>${e.cnn==null?"ไม่เกี่ยว (ไม่ใช่รอยต่อใน draft)":"P(รอยต่อเดิมถูก) = "+e.cnn.toFixed(3)}</dd></dl>
-  <p class="note">ดูจุดนี้ใน Juicebox: เปิด .hic ของ draft แล้ว Import Map Assembly เป็น corrected.assembly แล้วค้นชื่อ contig ข้างบน</p>`}
+  <p class="note">ดูจุดนี้ใน Juicebox: เปิด corrected.hic แล้ว Import Map Assembly เป็น corrected.assembly แล้วค้นชื่อ contig ข้างบน</p>`}
 function stat(e){return e.status==="applied"?["ok","แก้แล้ว"]:["warn","ควรตรวจ"]}
 function selectEdit(id){S.sel=id;const e=S.res.edits.find(x=>x.id===id);
   const r=S.tr.rows.findIndex(r=>r.parts.some(p=>p.i===e.a||p.i===e.b));if(r>=0)S.zoom=r;
@@ -194,7 +194,7 @@ function renderEval(){const ev=S.res.eval;$("#eval-card").hidden=!ev;if(!ev)retu
   R.forEach(([n,k,f,dir])=>{const a=ev.before[k],b=ev.after[k];const best=dir==="hi"?Math.max(a,b):dir==="lo"?Math.min(a,b):null;
     h+=`<tr><td>${n}</td><td class="${best!=null&&a===best&&a!==b?"best":""}">${f(a)}</td><td class="ours ${best!=null&&b===best&&a!==b?"best":""}">${f(b)}</td></tr>`});
   $("#cmp").innerHTML=h+"</tbody>"}
-function renderFiles(){const D={"corrected.assembly":"สำหรับ Juicebox Assembly Tools ใช้คู่กับ .hic ของ draft","corrected.agp":"AGP 2.1 สำหรับส่ง NCBI หรือใช้กับเครื่องมืออื่น","corrected.fa":"ลำดับเบสของ scaffold ใหม่","edits.tsv":"รายการแก้ทุกจุดพร้อมคะแนน (เปิดใน Excel ได้)"};
+function renderFiles(){const D={"corrected.hic":"contact map ของผลที่แก้แล้ว เปิดใน Juicebox แล้ว Import Map Assembly เป็น corrected.assembly","corrected.assembly":"สำหรับ Juicebox Assembly Tools ใช้คู่กับ corrected.hic","corrected.agp":"AGP 2.1 สำหรับส่ง NCBI หรือใช้กับเครื่องมืออื่น","corrected.fa":"ลำดับเบสของ scaffold ใหม่","edits.tsv":"รายการแก้ทุกจุดพร้อมคะแนน (เปิดใน Excel ได้)"};
   $("#files").innerHTML=S.res.files.map(f=>`<div class="file"><span class="ext">${esc(f.name.split(".").pop())}</span><span style="min-width:0"><span class="nm">${esc(f.name)}</span> <span class="note">${human(f.size)}</span><br><span class="ds">${D[f.name]||""}</span></span><span class="acts"><a class="btn primary" href="/api/jobs/${S.job}/file/${encodeURIComponent(f.name)}" download>ดาวน์โหลด</a></span></div>`).join("")+
    (S.res.files.some(f=>f.name==="corrected.fa")?"":`<p class="note">ไม่มี corrected.fa เพราะไม่ได้ใส่ contigs แบบ FASTA</p>`);
   $("#outdir").textContent="ไฟล์ทั้งหมดถูกบันทึกไว้ในโฟลเดอร์งานบนเครื่องนี้ด้วย ("+(S.status?S.status.id:"")+")"}
