@@ -329,6 +329,11 @@ body{margin:0} a{color:var(--accent)} a.btn{text-decoration:none} .drop{cursor:d
         <div class="range-row"><input type="range" id="mp" min="0.3" max="0.95" step="0.01" value="0.5"><output id="mp-o" for="mp">0.50</output></div>
         <span class="note">AI จะแก้เฉพาะจุดที่มั่นใจถึงเกณฑ์นี้ ปรับใหม่ได้ในหน้าผลลัพธ์โดยไม่ต้องรันใหม่</span>
       </div>
+      <div class="field">
+        <label for="nchrom">จำนวนโครโมโซม (ถ้ารู้)</label>
+        <input id="nchrom" type="number" min="0" max="500" step="1" placeholder="ว่างไว้ = ไม่จัดกลุ่ม" style="padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)">
+        <span class="note">ใส่จำนวนชุดเดียว (haploid n) เช่น 2n = 12 ให้ใส่ 6 ระบบจะจัด contig เป็นกลุ่มตามจำนวนนี้ แล้วเรียงลำดับและกลับทิศในแต่ละกลุ่ม ชิ้นเล็กที่สัญญาณไม่พอจะอยู่ในกลุ่ม "ไม่ได้จัดกลุ่ม" เปลี่ยนจำนวนได้ในหน้าผลลัพธ์โดยไม่ต้องรันใหม่</span>
+      </div>
       <details class="field">
         <summary style="cursor:pointer;font-weight:600;font-size:.9rem">ตั้งค่าขั้นสูง</summary>
         <div class="form" style="margin-top:10px">
@@ -392,6 +397,8 @@ body{margin:0} a{color:var(--accent)} a.btn{text-decoration:none} .drop{cursor:d
       <label class="lbl" for="thr">เกณฑ์ความมั่นใจ (--min-prob)</label>
       <div class="range-row"><input type="range" id="thr" min="0.3" max="0.95" step="0.01" value="0.5"><output id="thr-o" for="thr">0.50</output></div>
       <span class="note" id="thr-note">ปล่อยแถบเลื่อนแล้วระบบจะประกอบใหม่และเขียนไฟล์ใหม่ให้</span>
+      <label class="lbl" for="nc" style="margin-top:8px">จำนวนโครโมโซม (0 = ไม่จัดกลุ่ม)</label>
+      <div class="range-row"><input type="number" id="nc" min="0" max="500" step="1" value="0" style="width:90px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface)"><button class="btn" type="button" id="nc-go">จัดกลุ่มใหม่</button></div>
     </div>
   </div>
 

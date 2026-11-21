@@ -39,7 +39,8 @@ def cmd_correct(a):
     from .precomputed import load_scaffolds
     draft = load_scaffolds(a.agp)[0] if a.agp else None
     cnn, gnn, _ = load(a.model)
-    scafs = correct(lengths, contacts, draft, cnn, gnn, min_prob=a.min_prob, bin_size=a.bin_size)
+    scafs = correct(lengths, contacts, draft, cnn, gnn, min_prob=a.min_prob, bin_size=a.bin_size,
+                    n_chrom=a.n_chrom)
     write_agp(scafs, a.out + ".agp")
     if not str(a.contigs).endswith((".fai", ".sizes", ".tsv")):
         write_fasta(agp_to_fasta(scafs, read_fasta(a.contigs)), a.out + ".fa")
@@ -69,7 +70,8 @@ def cmd_refine(a):
     if a.save_contacts:
         contacts.save(a.save_contacts)
     cnn, gnn, _ = load(a.model)
-    scafs = correct(lengths, contacts, draft, cnn, gnn, min_prob=a.min_prob, bin_size=a.bin_size)
+    scafs = correct(lengths, contacts, draft, cnn, gnn, min_prob=a.min_prob, bin_size=a.bin_size,
+                    n_chrom=a.n_chrom)
     write_agp(scafs, a.out + ".agp")
     write_assembly(scafs, lengths, a.out + ".assembly")  # open in Juicebox (JBAT) for manual review
     if a.contigs and not a.contigs.endswith((".fai", ".sizes", ".tsv")):
@@ -174,6 +176,8 @@ def main(argv=None):
     p.add_argument("--agp", help="draft AGP from YaHS or 3D-DNA (omit = scaffold from scratch)")
     p.add_argument("--model", default="models/hicscaf.pt"); p.add_argument("--min-prob", type=float, default=0.5)
     p.add_argument("--bin-size", type=int); p.add_argument("-o", "--out", required=True)
+    p.add_argument("--n-chrom", type=int, default=0,
+                   help="expected number of chromosomes (haploid n): group scaffolds into this many chromosomes")
     p.set_defaults(fn=cmd_correct)
 
     p = sp.add_parser("refine", help="refine a finished YaHS/3D-DNA result from its .hic/.mcool (no raw reads)")
@@ -191,6 +195,8 @@ def main(argv=None):
     p.add_argument("--model", default="models/hicscaf.pt"); p.add_argument("--min-prob", type=float, default=0.5)
     p.add_argument("--bin-size", type=int); p.add_argument("--save-contacts", help="cache contacts as .npz")
     p.add_argument("-o", "--out", required=True, help="output prefix (.agp, .assembly, .fa)")
+    p.add_argument("--n-chrom", type=int, default=0,
+                   help="expected number of chromosomes (haploid n): group scaffolds into this many chromosomes")
     p.set_defaults(fn=cmd_refine)
 
     p = sp.add_parser("evaluate", help="compare scaffoldings (.agp/.assembly) against a truth")

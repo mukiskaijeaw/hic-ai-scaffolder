@@ -41,7 +41,7 @@ STEPS = [
     ("map", "จับคู่ contact กับ contig"),
     ("cnn", "JunctionCNN ตรวจรอยต่อ"),
     ("gnn", "EdgeGNN ทำนายคู่ปลาย contig"),
-    ("decode", "Decoder ประกอบ scaffold ใหม่"),
+    ("decode", "Decoder ประกอบ scaffold และจัดกลุ่มโครโมโซม"),
     ("write", "เขียนไฟล์ผลลัพธ์"),
 ]
 
@@ -250,7 +250,7 @@ def job_resolution(P) -> int:
     return int(P.get("resolution") or 5000) * int(P.get("scale") or 1) if P.get("mode") == "refine" else 0
 
 
-def decode_and_write(job: Job, min_prob: float):
+def decode_and_write(job: Job, min_prob: float, n_chrom: int | None = None):
     from .evaluate import evaluate, nx
     from .features import adjacencies_from_scaffolds
     from .io import agp_to_fasta, read_fasta, write_agp, write_fasta
@@ -260,7 +260,16 @@ def decode_and_write(job: Job, min_prob: float):
     c = job.ctx
     cs, draft, edges, probs = c["cs"], c["draft"], c["edges"], c["probs"]
     live = job.state == "running"
+    if n_chrom is None:
+        n_chrom = int(job.params.get("n_chrom") or 0)
+    job.params["n_chrom"] = n_chrom
     scafs = greedy_decode(cs, edges, probs, min_prob)
+    dec_adj = None
+    if n_chrom > 0:
+        from .grouping import group_chromosomes
+        dec_adj = set(adjacencies_from_scaffolds(cs, scafs))
+        job.say(f"จัดกลุ่ม {len(scafs):,} scaffold เป็น {n_chrom} โครโมโซม แล้วเรียงลำดับในแต่ละกลุ่ม")
+        scafs = group_chromosomes(cs, c["mapped"], scafs, n_chrom, progress=job.progress if live else None)
     if live:
         job.step = 5
     out = job.outdir
@@ -277,7 +286,7 @@ def decode_and_write(job: Job, min_prob: float):
         write_fasta(agp_to_fasta(scafs, c["seqs"]), out / "corrected.fa")
     if live:
         job.progress(0.85)
-    edits = compute_edits(cs, draft, scafs, edges, probs, c["jscore"], c["dadj"], min_prob)
+    edits = compute_edits(cs, draft, scafs, edges, probs, c["jscore"], c["dadj"], min_prob, dec_adj)
     with open(out / "edits.tsv", "w", encoding="utf-8") as fh:
         fh.write("type\tcontigs\tdetail\tgnn_prob\tcnn_prob\tstatus\n")
         for e in edits:
@@ -294,7 +303,13 @@ def decode_and_write(job: Job, min_prob: float):
                       for k in ("break", "join", "flip")},
            "review": sum(1 for e in edits if e["status"] == "review"), "flipped": flips,
            "edits": edits, "files": [], "eval": None, "bin_size": c["bin_size"],
-           "components": len(cs.comps)}
+           "components": len(cs.comps), "n_chrom": n_chrom, "chroms": None}
+    if n_chrom > 0:
+        chroms = [{"name": s.name, "length": sum(p.length for p, _ in s.parts), "pieces": len(s.parts)}
+                  for s in scafs if s.name.startswith("chr")]
+        placed = sum(x["length"] for x in chroms)
+        res["chroms"] = {"list": chroms, "placed": placed, "placed_frac": placed / max(1, res["after"]["total"]),
+                         "unplaced": len(scafs) - len(chroms)}
     if c["truth"]:
         from .cli import _load_truth
         t = _load_truth(c["truth"])
@@ -308,9 +323,13 @@ def decode_and_write(job: Job, min_prob: float):
     job.result = res
     job.say(f"เกณฑ์ {min_prob:.2f}: {res['before']['scaffolds']:,} → {res['after']['scaffolds']:,} scaffold, "
             f"N50 {_fmt_bp(res['before']['N50'])} → {_fmt_bp(res['after']['N50'])}")
+    if res["chroms"]:
+        ch = res["chroms"]
+        job.say(f"โครโมโซม {len(ch['list'])} กลุ่ม รวม {_fmt_bp(ch['placed'])} ({100 * ch['placed_frac']:.1f}% ของจีโนม), "
+                f"ไม่ได้จัดกลุ่ม {ch['unplaced']:,} ชิ้น")
 
 
-def compute_edits(cs, draft, scafs, edges, probs, jscore, dadj, min_prob):
+def compute_edits(cs, draft, scafs, edges, probs, jscore, dadj, min_prob, dec_adj=None):
     """Differences between the draft and the corrected scaffolding, plus near-threshold proposals."""
     from .features import adjacencies_from_scaffolds
 
@@ -338,8 +357,10 @@ def compute_edits(cs, draft, scafs, edges, probs, jscore, dadj, min_prob):
         if key in dadj:
             continue
         same = dscaf[key[0]][0] == dscaf[key[1]][0]
+        grouped = dec_adj is not None and key not in dec_adj
         out.append({"type": "join", "a": key[0], "b": key[1], "contigs": [name(key[0]), name(key[1])],
-                    "detail": (f"จัดลำดับใหม่ภายใน {dname(key[0])}" if same
+                    "detail": (f"จัดเข้ากลุ่มโครโมโซม: ต่อ {dname(key[0])} กับ {dname(key[1])}" if grouped
+                               else f"จัดลำดับใหม่ภายใน {dname(key[0])}" if same
                                else f"ต่อ {dname(key[0])} กับ {dname(key[1])}"),
                     "prob": round(pr(key, k) or 0, 3), "cnn": None, "status": "applied"})
     # proposals just below the threshold: worth checking in Juicebox
@@ -609,8 +630,11 @@ class Handler(BaseHTTPRequestHandler):
                 j = self._job(parts[2])
                 if not j:
                     return
-                mp = float(self._body().get("min_prob", 0.5))
-                decode_and_write(j, min(0.99, max(0.05, mp)))
+                b = self._body()
+                mp = float(b.get("min_prob", 0.5))
+                nc = b.get("n_chrom")
+                nc = None if nc is None or nc == "" else max(0, min(500, int(nc)))
+                decode_and_write(j, min(0.99, max(0.05, mp)), nc)
                 return self._json(j.result)
             self._err("not found", 404)
         except Exception as e:

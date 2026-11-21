@@ -26,3 +26,15 @@ def test_job_end_to_end(tmp_path):
     studio.decode_and_write(job, 0.9)
     assert job.result["min_prob"] == 0.9
     json.loads((tmp_path / "summary.json").read_text())
+
+
+@pytest.mark.skipif(not MODEL.exists(), reason="needs models/hicscaf.pt")
+def test_job_groups_chromosomes(tmp_path):
+    files = studio.make_demo(tmp_path)
+    job = studio.Job("t", {"mode": "correct", "min_prob": 0.5, "model": str(MODEL), "n_chrom": 2, **files}, tmp_path)
+    studio.run_job(job)
+    assert job.state == "done", job.error
+    ch = job.result["chroms"]
+    assert len(ch["list"]) == 2 and ch["placed_frac"] > 0.9
+    studio.decode_and_write(job, 0.5, 0)  # switch grouping off again from the results page
+    assert job.result["chroms"] is None and job.params["n_chrom"] == 0

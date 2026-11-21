@@ -75,7 +75,7 @@ async function start(){$("#formerr").textContent="";
   if(miss.length){$("#formerr").textContent="ยังขาดไฟล์: "+miss.map(s=>s.t).join(", ");return}
   if(Object.values(S.files).some(f=>f.busy)){$("#formerr").textContent="รอให้อัปโหลดเสร็จก่อน";return}
   const p={mode:S.mode,name:$("#jobname").value.trim(),min_prob:+$("#mp").value,resolution:+$("#res").value,scale:+$("#scale").value,
-    model:$("#model").value.trim(),bin_size:+$("#binsize").value||null,juicer_tools:$("#jt").value.trim()||null};
+    n_chrom:+$("#nchrom").value||0,model:$("#model").value.trim(),bin_size:+$("#binsize").value||null,juicer_tools:$("#jt").value.trim()||null};
   for(const[k,f]of Object.entries(S.files))if(f.path)p[k]=f.path;
   try{const j=await post("/api/jobs",p);openJob(j.id,"run")}catch(e){$("#formerr").textContent=e.message}}
 
@@ -123,7 +123,7 @@ async function renderResults(){
   $("#res-id").textContent="งาน "+st.id+" · เสร็จแล้ว";$("#res-title").textContent=st.params.name||"ผลการแก้ scaffold";
   const P=st.params,fn=p=>p?esc(p.split(/[\\/]/).pop()):"";
   $("#res-meta").innerHTML=[P.mode==="refine"?`<span>contact map <b>${fn(P.hic)}</b></span>`:`<span>pairs <b>${fn(P.pairs)}</b></span>`,P.draft?`<span>draft <b>${fn(P.draft)}</b></span>`:`<span><b>สร้างจากศูนย์</b> (ไม่มี draft)</span>`,`<span>ชิ้น contig <b>${num(S.res.components)}</b></span>`,`<span>bin <b>${num(S.res.bin_size)} bp</b></span>`].join("");
-  $("#thr").value=S.res.min_prob;$("#thr-o").textContent=(+S.res.min_prob).toFixed(2);
+  $("#thr").value=S.res.min_prob;$("#thr-o").textContent=(+S.res.min_prob).toFixed(2);$("#nc").value=S.res.n_chrom||0;
   renderTiles();renderEdits();renderEval();renderFiles();
   await renderMaps();
 }
@@ -132,7 +132,8 @@ function renderTiles(){const r=S.res,b=r.before,a=r.after;
   <div class="tile"><span class="k">จำนวน scaffold</span><span class="v">${num(a.scaffolds)}</span><span class="s">ก่อนแก้ ${num(b.scaffolds)}</span></div>
   <div class="tile"><span class="k">Scaffold N50</span><span class="v">${bp(a.N50)}</span><span class="s">ก่อนแก้ ${bp(b.N50)} · ใหญ่สุด ${bp(a.largest)}</span></div>
   <div class="tile ok"><span class="k">AI แก้ให้</span><span class="v">${num(r.counts.break+r.counts.join+r.counts.flip)} <small>จุด</small></span><span class="s">ตัด ${r.counts.break} · ต่อใหม่ ${r.counts.join} · กลับทิศ ${r.counts.flip}</span></div>
-  <div class="tile warn"><span class="k">ควรตรวจเองใน Juicebox</span><span class="v">${num(r.review)} <small>จุด</small></span><span class="s">ความมั่นใจใกล้เกณฑ์ ${(+r.min_prob).toFixed(2)}</span></div>`}
+  <div class="tile warn"><span class="k">ควรตรวจเองใน Juicebox</span><span class="v">${num(r.review)} <small>จุด</small></span><span class="s">ความมั่นใจใกล้เกณฑ์ ${(+r.min_prob).toFixed(2)}</span></div>`+
+  (r.chroms?`<div class="tile ok"><span class="k">จัดกลุ่มโครโมโซม</span><span class="v">${num(r.chroms.list.length)} <small>กลุ่ม</small></span><span class="s">รวม ${bp(r.chroms.placed)} (${(100*r.chroms.placed_frac).toFixed(1)}% ของจีโนม) · ไม่ได้จัดกลุ่ม ${num(r.chroms.unplaced)} ชิ้น</span><span class="s">${r.chroms.list.map(c=>esc(c.name)+" "+bp(c.length)).join(" · ")}</span></div>`:"")}
 async function renderMaps(){
   $$('#v-results .seg button').forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.view===S.view)));
   const m=await getMap(S.view,-1,600);const cv=$("#gmap");const ctx=paint(cv,m);const sc=m.n/m.total;
@@ -203,7 +204,9 @@ function bindResults(){
   $$('#v-results .seg button').forEach(b=>b.onclick=()=>{S.view=b.dataset.view;renderMaps()});
   document.addEventListener("keydown",e=>{if(location.hash!=="#results"||e.target.matches("input,select,textarea"))return;if(e.key==="b"||e.key==="B"){S.view=S.view==="before"?"after":"before";renderMaps()}});
   $("#thr").oninput=e=>{$("#thr-o").textContent=(+e.target.value).toFixed(2)};
-  $("#thr").onchange=async e=>{$("#thr-note").textContent="กำลังประกอบใหม่…";try{S.res=await post(`/api/jobs/${S.job}/threshold`,{min_prob:+e.target.value});S.maps={};delete S.tracks.after;S.sel=null;renderTiles();renderEdits();renderEval();renderFiles();await renderMaps();$("#thr-note").textContent="ประกอบใหม่และเขียนไฟล์ใหม่แล้ว"}catch(err){$("#thr-note").textContent=err.message}};
+  $("#thr").onchange=e=>regroup({min_prob:+e.target.value,n_chrom:+$("#nc").value||0},"กำลังประกอบใหม่…");
+  async function regroup(body,note){$("#thr-note").textContent=note;try{S.res=await post(`/api/jobs/${S.job}/threshold`,body);S.maps={};delete S.tracks.after;S.sel=null;renderTiles();renderEdits();renderEval();renderFiles();await renderMaps();$("#thr-note").textContent="ประกอบใหม่และเขียนไฟล์ใหม่แล้ว"}catch(err){$("#thr-note").textContent=err.message}}
+  $("#nc-go").onclick=()=>regroup({min_prob:+$("#thr").value,n_chrom:+$("#nc").value||0},"กำลังจัดกลุ่มโครโมโซมใหม่…");
   const gm=$("#gmap");const at=(cv,m,e)=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)/r.width*m.total,(e.clientY-r.top)/r.height*m.total]};
   const sOf=(m,x)=>{let s=0;for(let k=0;k<m.bounds.length;k++)if(m.bounds[k]<=x)s=k;return s};
   gm.onmousemove=e=>{if(!S.gm)return;const[x,y]=at(gm,S.gm,e);const a=sOf(S.gm,x),b=sOf(S.gm,y);$("#g-read").innerHTML=`X: <b>${esc(S.gm.names[a])}</b> ${bp(x-S.gm.bounds[a])} · Y: <b>${esc(S.gm.names[b])}</b> ${bp(y-S.gm.bounds[b])}`};
