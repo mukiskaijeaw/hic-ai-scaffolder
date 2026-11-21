@@ -93,15 +93,23 @@ def greedy_decode(cs: ComponentSet, edges: np.ndarray, probs: np.ndarray, min_pr
     return [Scaffold(f"{prefix}{i + 1}", p) for i, p in enumerate(scafs)]
 
 
-def correct(lengths, contacts, draft, cnn, gnn, min_prob=0.5, bin_size=None, n_chrom: int = 0):
-    """n_chrom > 0: afterwards group the scaffolds into that many chromosomes (see grouping.py)."""
+def correct(lengths, contacts, draft, cnn, gnn, min_prob=0.5, bin_size=None, n_chrom: int = 0, hic_out=None,
+            hic_resolution: int = 5000):
+    """n_chrom > 0: afterwards group the scaffolds into that many chromosomes (see grouping.py).
+    hic_out: also write a .hic of the result (Juicebox assembly mode, see hicwrite.py)."""
     cs, g, *_ = prepare(lengths, contacts, draft, cnn, bin_size)
     probs = edge_probs(gnn, g)
     scafs = greedy_decode(cs, g.edge_index, probs, min_prob)
+    mapped = None
     if n_chrom:
         from .features import map_contacts
         from .grouping import group_chromosomes
-        scafs = group_chromosomes(cs, map_contacts(cs, contacts), scafs, n_chrom)
+        mapped = map_contacts(cs, contacts)
+        scafs = group_chromosomes(cs, mapped, scafs, n_chrom)
+    if hic_out:
+        from .features import map_contacts
+        from .hicwrite import write_hic
+        write_hic(hic_out, cs, mapped if mapped is not None else map_contacts(cs, contacts), scafs, hic_resolution)
     return scafs
 
 

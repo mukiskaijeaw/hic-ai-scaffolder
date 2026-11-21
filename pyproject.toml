@@ -13,6 +13,8 @@ dependencies = [
     "torch>=2.0",
     "hictkpy>=1.0",   # reads .hic / .cool / .mcool; binary wheels for Windows, macOS, Linux
     "scipy>=1.8",     # fast sparse export from hictkpy
+    "pandas>=1.5",    # hictkpy needs pandas + pyarrow to write the corrected .hic
+    "pyarrow>=14",
 ]
 
 [project.optional-dependencies]

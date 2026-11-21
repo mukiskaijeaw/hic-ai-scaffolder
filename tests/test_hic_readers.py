@@ -47,3 +47,23 @@ def test_builtin_matches_hictk(hic_path):
     for k, v in ours.items():
         assert v == theirs.get(k, set()), k
     assert sum(len(v) for v in ours.values()) > 1000
+
+
+def test_write_hic_round_trip(tmp_path):
+    """The corrected .hic keeps every contact, laid out in scaffold order (assembly mode)."""
+    pytest.importorskip("pandas")
+    from hicscaf.features import ComponentSet, map_contacts
+    from hicscaf.hicfile import HicFile
+    from hicscaf.hicwrite import layout_positions, write_hic
+    from hicscaf.simulate import simulate
+
+    sim = simulate(seed=3)
+    cs = ComponentSet.from_scaffolds(sim.true_scaffolds)
+    mapped = map_contacts(cs, sim.contacts)
+    res = write_hic(tmp_path / "out.hic", cs, mapped, sim.true_scaffolds, 5000)
+    h = HicFile.open(tmp_path / "out.hic")
+    asm = [c for c in h.chroms if c.name == "assembly"][0]
+    x, y, w, total = layout_positions(cs, sim.true_scaffolds, mapped)
+    assert asm.length == total and 5000 in h.resolutions and res[0] == 5000
+    rec = h.records(asm, asm, 5000)
+    assert rec[:, 2].sum() == pytest.approx(w.sum())

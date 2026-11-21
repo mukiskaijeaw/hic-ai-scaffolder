@@ -116,6 +116,10 @@ hicscaf correct --contigs contigs.fa --pairs hic.pairs.gz --agp 3ddna.agp -o hic
 local search ที่ minimise Σ w·log(ระยะ)) ได้ `chr1..chrN` และ `unplaced_*` สำหรับชิ้นที่สัญญาณไม่พอ
 ใน Studio ใส่ได้ที่ "จำนวนโครโมโซม" และเปลี่ยนได้ในหน้าผลลัพธ์โดยไม่ต้องรันใหม่
 
+**ไฟล์ .hic ของผลลัพธ์:** `refine` / `correct` เขียน `<out>.hic` ให้ด้วย (Studio: `corrected.hic`) เป็น contact map
+ที่เรียงตามผลที่แก้แล้ว (Juicebox assembly mode, .hic v9 ผ่าน hictkpy) เปิดใน Juicebox 2.x: File → Open → `<out>.hic`
+แล้ว Assembly → Import Map Assembly → `<out>.assembly` ปิดได้ด้วย `--no-hic`
+
 ถ้าไม่มี `bwa`/`samtools` และมี Hi-C เป็น `.bed` แบบ YaHS อยู่แล้ว ส่งไฟล์ `.bed(.gz)` ให้ `--pairs` ได้ตรงๆ
 
 ---
@@ -229,6 +233,7 @@ hicscaf/
   models.py     JunctionCNN, EdgeGNN
   scaffold.py   inference + greedy decoder + baseline ที่ไม่ใช้ AI
   grouping.py   --n-chrom: จัดกลุ่มเป็นโครโมโซม แล้วเรียง/กลับทิศในแต่ละกลุ่ม
+  hicwrite.py   เขียน .hic ของผลลัพธ์ (เปิดใน Juicebox คู่กับ .assembly)
   train.py      ฝึก CNN → GNN
   evaluate.py   ตัวชี้วัด
   precomputed.py อ่าน .assembly / .hic / .mcool (ใช้ผลสำเร็จรูปโดยไม่ต้องมี raw reads)

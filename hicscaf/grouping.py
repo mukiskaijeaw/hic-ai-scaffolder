@@ -35,19 +35,32 @@ def _unit_coords(cs, scafs):
     return unit, off, strand, ulen
 
 
-def _cluster(M: np.ndarray, L: np.ndarray, k: int) -> np.ndarray:
-    """Average-linkage on density M[i,j] / (L_i L_j); returns a cluster label per row (0..k-1)."""
+def _cluster(M: np.ndarray, L: np.ndarray, k: int, method: str = "density") -> np.ndarray:
+    """Agglomerative clustering of units into k groups; returns a label per row (0..k-1, -1 = left out).
+
+    method "density": average linkage on M[i,j] / (L_i L_j) (LACHESIS). Cis density falls with
+      chromosome size, so it tends to cut long chromosomes and glue short ones together.
+    method "modularity": merge the pair with the largest excess of contacts over a random-mixing
+      expectation, M[i,j] - T_i T_j / 2m (Newman / CNM). The far ends of a long chromosome add
+      nothing either way, the contacts across its many internal junctions keep it together.
+    """
     n = len(L)
     M = M.astype(np.float64).copy()
     np.fill_diagonal(M, 0)
     L = L.astype(np.float64).copy()
+    T = M.sum(1)
+    m2 = max(T.sum(), 1e-9)
     alive = np.ones(n, bool)
     label = np.arange(n)
+    NEG = -np.inf
 
     def row(i):
-        d = M[i] / (L[i] * L)
-        d[~alive] = -1
-        d[i] = -1
+        if method == "density":
+            d = M[i] / (L[i] * L)
+        else:
+            d = M[i] - T[i] * T / m2
+        d[~alive] = NEG
+        d[i] = NEG
         return d
 
     best = np.empty(n, np.int64)
@@ -58,29 +71,31 @@ def _cluster(M: np.ndarray, L: np.ndarray, k: int) -> np.ndarray:
         bval[i] = d[best[i]]
     left = n
     while left > k:
-        cand = np.where(alive, bval, -np.inf)
+        cand = np.where(alive, bval, NEG)
         i = int(np.argmax(cand))
-        if cand[i] <= 0:  # nothing links any more: stop (leftovers handled by the caller)
-            break
+        if not np.isfinite(cand[i]) or (method == "density" and cand[i] <= 0):
+            break  # nothing links any more (leftovers handled by the caller)
         j = int(best[i])
-        # merge j into i
         M[i] += M[j]; M[:, i] += M[:, j]
         M[i, i] = 0
         M[j] = 0; M[:, j] = 0
-        L[i] += L[j]
+        L[i] += L[j]; T[i] += T[j]; T[j] = 0
         alive[j] = False
         label[label == j] = i
         left -= 1
         d = row(i)
         best[i] = int(np.argmax(d)); bval[i] = d[best[i]]
-        # rows whose best partner was i or j must be refreshed; others may now prefer i
-        di = M[:, i] / (L * L[i])
+        di = M[:, i] / (L * L[i]) if method == "density" else M[:, i] - T * T[i] / m2
         for r in np.where(alive)[0]:
             if r == i:
                 continue
-            if best[r] in (i, j):
-                dr = row(r)
-                best[r] = int(np.argmax(dr)); bval[r] = dr[best[r]]
+            if best[r] in (i, j) or method != "density":
+                # modularity: the expectation term of row r changed for i; refresh when needed
+                if best[r] in (i, j):
+                    dr = row(r)
+                    best[r] = int(np.argmax(dr)); bval[r] = dr[best[r]]
+                elif di[r] > bval[r]:
+                    best[r], bval[r] = i, di[r]
             elif di[r] > bval[r]:
                 best[r], bval[r] = i, di[r]
     roots = np.unique(label)
@@ -220,7 +235,7 @@ def _refine_order(order, a, pa, b, pb, w, ulen, bin_bp: int = 25_000, window: in
     return [(members[i], int(st[i])) for i in perm]
 
 
-def group_chromosomes(cs, mapped, scafs: list[Scaffold], n_chrom: int, min_len: int = 50_000,
+def group_chromosomes(cs, mapped, scafs: list[Scaffold], n_chrom: int, min_len: int = 50_000, method: str = "density",
                       max_units: int = 3000, min_links: float = 3.0, min_share: float = 0.5,
                       prefix: str = "chr", progress=None) -> list[Scaffold]:
     """Join `scafs` (built on `cs`) into `n_chrom` chromosome scaffolds + unplaced leftovers."""
@@ -248,7 +263,7 @@ def group_chromosomes(cs, mapped, scafs: list[Scaffold], n_chrom: int, min_len: 
     M = np.zeros((len(elig), len(elig)))
     np.add.at(M, (pos[ua[m]], pos[ub[m]]), w[m])
     M = M + M.T
-    lab = _cluster(M, ulen[elig] / 1e6, n_chrom)
+    lab = _cluster(M, ulen[elig] / 1e6, n_chrom, method)
     group = np.full(U, -1, np.int64)
     group[elig] = lab
     if progress:

@@ -20,6 +20,7 @@ def test_job_end_to_end(tmp_path):
     assert r["after"]["scaffolds"] < r["before"]["scaffolds"]
     assert r["eval"]["after"]["F1"] > r["eval"]["before"]["F1"]
     assert (tmp_path / "corrected.assembly").exists() and (tmp_path / "corrected.agp").exists()
+    assert (tmp_path / "corrected.hic").exists()
     m = studio.contact_map(job, "after", -1, 100)
     assert m["n"] == 100 and len(m["names"]) == r["after"]["scaffolds"]
     assert studio.scaffold_tracks(job, "after")["count"] == r["after"]["scaffolds"]
