@@ -1,4 +1,4 @@
-"""Command line: hicscaf {simulate,train,correct,evaluate,sim-reads,cut-ref,paf-truth}"""
+"""Command line: hicscaf {simulate,train,correct,refine,evaluate,studio,sim-reads,cut-ref,paf-truth}"""
 from __future__ import annotations
 
 import argparse
@@ -142,6 +142,11 @@ def cmd_random_ref(a):
     print(f"wrote {a.out}: {len(seqs)} chromosomes, {sum(map(len, seqs.values())):,} bp")
 
 
+def cmd_studio(a):
+    from .studio import serve
+    serve(a.host, a.port, a.workdir, not a.no_browser)
+
+
 def cmd_paf_truth(a):
     from .io import truth_from_paf, write_truth
     write_truth(truth_from_paf(a.paf), a.out)
@@ -215,6 +220,12 @@ def main(argv=None):
     p = sp.add_parser("paf-truth", help="truth table from minimap2 PAF (contigs vs reference)")
     p.add_argument("paf"); p.add_argument("-o", "--out", required=True)
     p.set_defaults(fn=cmd_paf_truth)
+
+    p = sp.add_parser("studio", help="open the hicscaf Studio web app (upload files, run, view results)")
+    p.add_argument("--host", default="127.0.0.1"); p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--workdir", help="where uploads and results are kept (default ~/hicscaf_studio)")
+    p.add_argument("--no-browser", action="store_true")
+    p.set_defaults(fn=cmd_studio)
 
     a = ap.parse_args(argv)
     a.fn(a)

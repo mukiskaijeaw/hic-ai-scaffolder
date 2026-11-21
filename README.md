@@ -114,6 +114,22 @@ hicscaf correct --contigs contigs.fa --pairs hic.pairs.gz --agp 3ddna.agp -o hic
 
 ---
 
+## ใช้งานผ่านหน้าเว็บ (hicscaf Studio)
+
+ไม่ต้องพิมพ์คำสั่ง: เปิดโปรแกรมแล้วอัปโหลดไฟล์ กดเริ่ม แล้วดูผลในเบราว์เซอร์
+
+* **Windows**: ดับเบิลคลิก `studio.bat` ในโฟลเดอร์ repo (ใช้ `.venv` ถ้ามี) เบราว์เซอร์จะเปิดเองที่ http://127.0.0.1:8765
+* **ทุกระบบ**: `hicscaf studio` (หรือ `python -m hicscaf.cli studio`)
+
+รับข้อมูล 2 แบบ: (1) contigs `.fa/.fai` + Hi-C `.bed.gz/.pairs.gz/.npz` (+ draft `.agp/.assembly` ถ้ามี)
+หรือ (2) `.hic/.mcool` + `.assembly/.agp` ที่ใช้สร้างไฟล์นั้น ใส่ไฟล์คำตอบ (`.review.assembly` / truth.tsv) เพิ่มได้เพื่อวัดผล
+ไฟล์ใหญ่ให้กด "ใช้ path" แล้ววางตำแหน่งไฟล์แทนการอัปโหลด
+
+หน้าผลลัพธ์มี contact map ทั้งจีโนมก่อน/หลัง, ซูมราย scaffold, แถบสีที่บอกชิ้นที่กลับทิศ/ย้ายมา, รายการแก้พร้อมความมั่นใจ,
+ปรับเกณฑ์ `--min-prob` แล้วประกอบใหม่ได้ทันที, และดาวน์โหลด `corrected.assembly / .agp / .fa / edits.tsv`
+ไฟล์งานเก็บที่ `~/hicscaf_studio` (เปลี่ยนด้วย `--workdir`) ทุกอย่างทำงานบนเครื่อง ไม่ส่งข้อมูลออกไปไหน
+ตัวเซิร์ฟเวอร์ใช้แค่ Python มาตรฐาน ไม่ต้องติดตั้งอะไรเพิ่ม (อ่าน `.hic` ยังต้องมี `hic-straw` หรือ juicer_tools เหมือน `refine`)
+
 ## ไม่มี raw reads? ใช้ผลที่ YaHS / 3D-DNA ทำเสร็จแล้ว (No raw reads needed)
 
 raw Hi-C reads ใหญ่มาก (หลายสิบ–หลายร้อย GB) แต่ `hicscaf` ต้องการแค่ **contact matrix** + **ลำดับ contig เดิม** ซึ่งมีคนทำไว้ให้แล้ว:
