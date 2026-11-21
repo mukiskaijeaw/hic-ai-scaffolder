@@ -473,7 +473,7 @@ def env_info() -> dict:
             return True
         except Exception:
             return False
-    return {"hicstraw": True, "hic_builtin": True, "cooler": has("cooler"), "java": bool(shutil.which("java")),
+    return {"hictk": has("hictkpy"), "hicstraw": True, "hic_builtin": True, "cooler": has("cooler"), "java": bool(shutil.which("java")),
             "torch": has("torch"), "model": str(REPO_MODEL) if REPO_MODEL.exists() else None,
             "juicer_tools": os.environ.get("JUICER_TOOLS")}
 

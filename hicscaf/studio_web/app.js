@@ -64,8 +64,8 @@ async function loadEnv(){try{S.env=await api("/api/env")}catch(e){$("#envbox").t
   const e=S.env;if(e.model)$("#model").value=e.model;
   const bits=[];bits.push(e.torch?"✓ PyTorch":"✗ ไม่พบ PyTorch (pip install torch)");
   bits.push(e.model?"✓ โมเดล":"✗ ไม่พบ models/hicscaf.pt");
-  bits.push("✓ อ่าน .hic ได้ (ตัวอ่านในตัว ไม่ต้องติดตั้งเพิ่ม)");
-  bits.push(e.cooler?"✓ อ่าน .mcool ได้":"• อ่าน .mcool ต้องติดตั้ง cooler");
+  bits.push(e.hictk?"✓ อ่าน .hic / .mcool ได้ (hictk)":"✓ อ่าน .hic ได้ (ตัวอ่านสำรองในตัว) · แนะนำ pip install hictkpy");
+  if(!e.hictk)bits.push(e.cooler?"✓ อ่าน .mcool ได้":"• อ่าน .mcool ต้องติดตั้ง hictkpy หรือ cooler");
   $("#envbox").innerHTML=bits.map(esc).join("<br>")}
 async function loadHistory(){try{const js=await api("/api/jobs");$("#history-card").hidden=!js.length;
   $("#history").innerHTML=js.map(j=>`<div class="file"><span class="ext">${j.state==="done"?"เสร็จ":j.state==="error"?"ผิดพลาด":"กำลังรัน"}</span><span style="min-width:0"><span class="nm">${esc(j.name)}</span><br><span class="ds">${new Date(j.created*1000).toLocaleString("th-TH")} · ${j.params.mode==="refine"?".hic + draft":"contigs + pairs"}</span></span><span class="acts"><button class="btn" type="button" data-j="${j.id}">${j.state==="done"?"ดูผล":"ดูสถานะ"}</button></span></div>`).join("");

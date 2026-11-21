@@ -121,6 +121,52 @@ def _records_hicstraw(path, resolution, chroms=None, progress=None):
                 yield c1.name, c2.name, np.array([[x.binX, x.binY, x.counts] for x in r], np.float64)
 
 
+def _records_hictk(path, resolution, chroms=None, progress=None):
+    """Standard reader: hictkpy (pip wheels for Windows, macOS, Linux; reads .hic, .cool, .mcool)."""
+    import hictkpy
+
+    p = str(path)
+    try:
+        f = hictkpy.File(p) if p.endswith(".cool") else hictkpy.File(p, resolution)
+    except Exception as e:  # unknown resolution etc.
+        try:
+            res = sorted(int(r) for r in hictkpy.MultiResFile(str(path)).resolutions())
+            raise SystemExit(f"{os.path.basename(str(path))} has no {resolution:,} bp resolution; available: "
+                             + ", ".join(f"{r:,}" for r in res))
+        except SystemExit:
+            raise
+        except Exception:
+            raise SystemExit(f"cannot open {os.path.basename(str(path))}: {e}")
+    res = int(f.resolution() if callable(f.resolution) else f.resolution)
+    cs = [(n, int(L)) for n, L in f.chromosomes().items() if n.lower() != "all" and (chroms is None or n in chroms)]
+    if not cs:
+        raise SystemExit(f"no chromosome of {os.path.basename(str(path))} matches the draft layout")
+    pairs = [(a, b) for i, a in enumerate(cs) for b in cs[i:]]
+    tot = sum(a[1] * b[1] for a, b in pairs) or 1
+    done = 0
+    for (n1, l1), (n2, l2) in pairs:
+        if progress:
+            progress(done / tot)
+        done += l1 * l2
+        sel = f.fetch(n1, normalization="NONE") if n1 == n2 else f.fetch(n1, n2, normalization="NONE")
+        try:
+            m = sel.to_coo().tocoo()  # needs scipy
+            r = np.stack([m.row.astype(np.float64) * res, m.col.astype(np.float64) * res,
+                          m.data.astype(np.float64)], 1)
+        except ImportError:
+            r = np.array([(px.start1, px.start2, px.count) for px in sel], np.float64).reshape(-1, 3)
+        if len(r):
+            yield n1, n2, r
+
+
+def _have_hictk() -> bool:
+    try:
+        import hictkpy  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def _records_hicfile(path, resolution, chroms=None, progress=None):
     from .hicfile import HicFile
 
@@ -199,12 +245,14 @@ def load_matrix_contacts(path, layout: Layout, resolution: int = 5000, juicer_to
                          scale: int = 1, progress=None) -> Contacts:
     """Read a binned contact matrix and express it as weighted contacts in contig coordinates."""
     p = str(path)
-    if p.endswith(".hic"):
-        jar = juicer_tools or os.environ.get("JUICER_TOOLS")
+    jar = juicer_tools or os.environ.get("JUICER_TOOLS")
+    if p.endswith((".hic", ".mcool", ".cool")) and _have_hictk() and not jar:
+        recs = _records_hictk(p, resolution, set(layout.blocks), progress)   # standard reader
+    elif p.endswith(".hic"):
         if jar:
             recs = _records_juicer_tools(p, resolution, sorted(layout.blocks), jar, progress)
         else:
-            recs = _records_hicfile(p, resolution, set(layout.blocks), progress)  # built-in reader
+            recs = _records_hicfile(p, resolution, set(layout.blocks), progress)  # built-in fallback
     elif p.endswith((".mcool", ".cool")):
         recs = _records_cooler(p, resolution)
     else:

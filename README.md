@@ -128,7 +128,7 @@ hicscaf correct --contigs contigs.fa --pairs hic.pairs.gz --agp 3ddna.agp -o hic
 หน้าผลลัพธ์มี contact map ทั้งจีโนมก่อน/หลัง, ซูมราย scaffold, แถบสีที่บอกชิ้นที่กลับทิศ/ย้ายมา, รายการแก้พร้อมความมั่นใจ,
 ปรับเกณฑ์ `--min-prob` แล้วประกอบใหม่ได้ทันที, และดาวน์โหลด `corrected.assembly / .agp / .fa / edits.tsv`
 ไฟล์งานเก็บที่ `~/hicscaf_studio` (เปลี่ยนด้วย `--workdir`) ทุกอย่างทำงานบนเครื่อง ไม่ส่งข้อมูลออกไปไหน
-ตัวเซิร์ฟเวอร์ใช้แค่ Python มาตรฐาน ไม่ต้องติดตั้งอะไรเพิ่ม (อ่าน `.hic` ยังต้องมี `hic-straw` หรือ juicer_tools เหมือน `refine`)
+ตัวเซิร์ฟเวอร์ใช้แค่ Python มาตรฐาน ไม่ต้องติดตั้งอะไรเพิ่ม
 
 ## ไม่มี raw reads? ใช้ผลที่ YaHS / 3D-DNA ทำเสร็จแล้ว (No raw reads needed)
 
@@ -157,7 +157,9 @@ hicscaf refine --draft pre_curation.agp --hic sample.mcool --resolution 5000 -o 
 ```
 
 หมายเหตุ
-* `.hic` อ่านด้วย `pip install hic-straw` หรือ `--juicer-tools juicer_tools.jar` (มีใน 3D-DNA: `visualize/juicebox_tools.jar`) ; `.mcool` ใช้ `pip install cooler`
+* `.hic` / `.mcool` / `.cool` อ่านด้วย [hictk](https://github.com/paulsengroup/hictkpy) (`hictkpy` ติดตั้งมากับ `pip install -e .` มี wheel สำเร็จรูปสำหรับ Windows/macOS/Linux)
+  ถ้าไม่มี hictkpy จะใช้ตัวอ่าน `.hic` ในตัว (`hicscaf/hicfile.py`, pure Python) แทน หรือใส่ `--juicer-tools juicer_tools.jar` เพื่อใช้ juicer_tools
+  (`hic-straw` ไม่ต้องใช้แล้ว: ติดตั้งบน Windows ไม่ได้)
 * `.hic` แบบ Juicebox Assembly (JBAT, โครโมโซมชื่อ `assembly`) ใช้ `--layout assembly` (ค่าเริ่มเมื่อ draft เป็น .assembly) ;
   ถ้า `.hic` ถูกสร้างจาก .assembly อีกไฟล์ (เช่นจาก review) ให้ระบุ `--layout-assembly that.assembly`; จีโนม > 2.1 Gb ใส่ `--scale`
 * `.hic` / `.mcool` ที่สร้างบน FASTA ของ scaffold ใช้ `--layout agp --layout-agp scaffolds.agp`
