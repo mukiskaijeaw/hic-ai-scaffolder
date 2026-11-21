@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hicscaf"
+version = "0.1.0"
+description = "AI-assisted Hi-C scaffolding: CNN + GNN correction of YaHS / 3D-DNA scaffolds"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.22", "torch>=2.0"]
+
+[project.optional-dependencies]
+plot = ["matplotlib"]
+test = ["pytest"]
+
+[project.scripts]
+hicscaf = "hicscaf.cli:main"
+
+[tool.setuptools]
+packages = ["hicscaf"]

@@ -1,0 +1,21 @@
+# conda env create -f benchmark/environment.yml && conda activate hicscaf-bench
+name: hicscaf-bench
+channels: [conda-forge, bioconda]
+dependencies:
+  - python=3.11
+  - numpy
+  - pytorch
+  - matplotlib
+  - bwa
+  - samtools
+  - minimap2
+  - yahs
+  - quast
+  - sra-tools        # fasterq-dump for real Hi-C reads
+  - openjdk          # 3D-DNA / Juicebox tools
+  - parallel         # 3D-DNA
+  - lastz            # 3D-DNA (optional steps)
+  - gawk           # 3D-DNA needs GNU awk
+  - pigz
+  - wget
+  - git
