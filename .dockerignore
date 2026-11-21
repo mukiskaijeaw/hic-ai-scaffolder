@@ -1,0 +1,6 @@
+.git
+**/__pycache__
+*.egg-info
+bench_out
+.pytest_cache
+deploy

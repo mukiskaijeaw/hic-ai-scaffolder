@@ -62,6 +62,7 @@ function setMode(m){S.mode=m;$$('#v-upload .seg button').forEach(b=>b.setAttribu
   for(const k of Object.keys(S.files))if(!SLOTS[m].some(s=>s.k===k))delete S.files[k];renderDrops()}
 async function loadEnv(){try{S.env=await api("/api/env")}catch(e){$("#envbox").textContent=e.message;return}
   const e=S.env;if(e.model)$("#model").value=e.model;
+  if(e.public){document.body.classList.add("public");for(const id of["#model","#jt"])$(id).closest(".field").hidden=true}
   const bits=[];bits.push(e.torch?"✓ PyTorch":"✗ ไม่พบ PyTorch (pip install torch)");
   bits.push(e.model?"✓ โมเดล":"✗ ไม่พบ models/hicscaf.pt");
   bits.push(e.hictk?"✓ อ่าน .hic / .mcool ได้ (hictk)":"✓ อ่าน .hic ได้ (ตัวอ่านสำรองในตัว) · แนะนำ pip install hictkpy");
