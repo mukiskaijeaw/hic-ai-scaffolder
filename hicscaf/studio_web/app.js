@@ -6,6 +6,7 @@ const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim
 const bp=x=>x>=1e9?(x/1e9).toFixed(2)+" Gb":x>=1e6?(x/1e6).toFixed(2)+" Mb":x>=1e3?(x/1e3).toFixed(1)+" kb":x+" bp";
 const human=b=>b>1e9?(b/1e9).toFixed(1)+" GB":b>1e6?(b/1e6).toFixed(0)+" MB":(b/1e3).toFixed(0)+" KB";
 const num=x=>Number(x).toLocaleString("en-US");
+const dur=t=>{t=Math.max(0,Math.round(t||0));if(t<60)return t+" วินาที";const m=Math.floor(t/60);if(m<60)return m+" นาที"+(m<10&&t%60?" "+(t%60)+" วินาที":"");const h=Math.floor(m/60);return h+" ชม. "+(m%60)+" นาที"};
 async function api(path,opt){const r=await fetch(path,opt);let j;try{j=await r.json()}catch(e){throw new Error("เซิร์ฟเวอร์ไม่ตอบ (หน้าต่างโปรแกรมยังเปิดอยู่ไหม)")}if(!r.ok)throw new Error(j.error||r.statusText);return j}
 const post=(p,b)=>api(p,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})});
 
@@ -84,11 +85,18 @@ function openJob(id,view){S.job=id;S.res=null;S.maps={};S.tracks={};S.sel=null;S
 function watch(){clearTimeout(poll);if(!S.job){$("#run-empty").hidden=false;return}
   const tick=async()=>{let j;try{j=await api("/api/jobs/"+S.job)}catch(e){$("#run-stage").textContent=e.message;return}
     $("#run-empty").hidden=true;$("#job-id").textContent="งาน "+j.id;$("#run-title").textContent=j.state==="done"?"ประมวลผลเสร็จแล้ว":j.state==="error"?"เกิดข้อผิดพลาด":"กำลังประมวลผล: "+esc(j.name);
-    const st=j.state==="done"?j.steps.length:j.step;
-    $("#stl").innerHTML=j.steps.map((s,i)=>`<li class="${i<st?"done":i===st&&j.state==="running"?"active":""}"><span class="dot">${i<st?"✓":i+1}</span><span><span class="nm">${s}</span></span><span class="tm">${i===st&&j.state==="running"?"กำลังทำ":i===st&&j.state==="error"?"ผิดพลาด":""}</span></li>`).join("");
-    $("#run-bar").style.width=(Math.max(0,st)/j.steps.length*100)+"%";
-    $("#run-stage").textContent=j.state==="error"?"ผิดพลาด: "+j.error:j.state==="done"?"เสร็จสิ้น":`ขั้นที่ ${st+1}/${j.steps.length} · ${j.steps[Math.max(0,st)]}`;
-    $("#run-time").textContent=Math.round(Date.now()/1000-j.created)+" วินาที";
+    const st=j.state==="done"?j.steps.length:j.step;const D=j.detail||[];
+    $("#stl").innerHTML=j.steps.map((s,i)=>{const d=D[i]||{};const run=i===st&&j.state==="running",err=i===st&&j.state==="error";
+      let right="",bar="";
+      if(i<st||d.done)right="ใช้เวลา "+dur(d.elapsed);
+      else if(run){right=d.frac!=null&&d.frac>=0.995?"กำลังจบขั้นนี้":d.eta!=null?"เหลืออีก ~"+dur(d.eta):"กำลังทำ · "+dur(d.elapsed);
+        bar=d.frac!=null?`<span class="mb"><i style="width:${(d.frac*100).toFixed(1)}%"></i></span><span class="mbt">${Math.floor(d.frac*100)}%${d.eta==null&&d.elapsed<3?" · กำลังประมาณเวลา":""}</span>`:`<span class="mb ind"><i></i></span><span class="mbt">ขั้นนี้ประมาณเวลาไม่ได้ ผ่านไปแล้ว ${dur(d.elapsed)}</span>`}
+      else if(err)right="ผิดพลาด";
+      return`<li class="${i<st?"done":run?"active":""}"><span class="dot">${i<st?"✓":i+1}</span><span style="min-width:0"><span class="nm">${s}</span>${bar?`<span class="mbw">${bar}</span>`:""}</span><span class="tm">${right}</span></li>`}).join("");
+    const cur=D[st]||{};const overall=j.state==="done"?1:(Math.max(0,st)+(cur.frac||0))/j.steps.length;
+    $("#run-bar").style.width=(overall*100).toFixed(1)+"%";
+    $("#run-stage").textContent=j.state==="error"?"ผิดพลาด: "+j.error:j.state==="done"?"เสร็จสิ้น":`ขั้นที่ ${st+1}/${j.steps.length} · ${j.steps[Math.max(0,st)]}`+(cur.eta!=null?` · ขั้นนี้เหลืออีกประมาณ ${dur(cur.eta)}`:"");
+    $("#run-time").textContent="ผ่านไปแล้ว "+dur((j.now||Date.now()/1000)-j.created);
     const lg=$("#log");lg.innerHTML=j.log.map(l=>{const m=l.match(/^(\[[^\]]+\])(.*)$/);return m?`<span class="ts">${esc(m[1])}</span>${esc(m[2])}`:esc(l)}).join("\n");lg.scrollTop=1e9;
     $("#see").disabled=j.state!=="done";
     if(j.state==="done"){if(location.hash==="#run")setTimeout(()=>{if(location.hash==="#run")location.hash="results"},900);return}

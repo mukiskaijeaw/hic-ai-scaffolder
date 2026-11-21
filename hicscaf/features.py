@@ -216,7 +216,7 @@ def auto_bin_size(mapped, total_len: int, min_bin: int = 1_000) -> int:
     return int(np.clip(5_000 * np.sqrt(40_000 / max(ppm, 1)), min_bin, 100_000) // 500 * 500)
 
 
-def junction_patches(cs: ComponentSet, scafs: list[Scaffold], mapped, bin_size: int, half: int = 24):
+def junction_patches(cs: ComponentSet, scafs: list[Scaffold], mapped, bin_size: int, half: int = 24, progress=None):
     """Return patches (J, 2, 2h, 2h), list of junction keys (a,b) and the draft class for each."""
     a, pa, b, pb, w = mapped
     N = len(cs.comps)
@@ -242,7 +242,10 @@ def junction_patches(cs: ComponentSet, scafs: list[Scaffold], mapped, bin_size: 
     sid, x, y, ww = sid[order], x[order], y[order], ww[order]
     keys, patches, classes = [], [], []
     W = 2 * half
+    nj = max(1, sum(len(s.parts) - 1 for s in scafs))
     for si, s in enumerate(scafs):
+        if progress and si % 50 == 0:
+            progress(len(keys) / nj)
         lo_s, hi_s = np.searchsorted(sid, si, "left"), np.searchsorted(sid, si, "right")
         xs, ys, wss = x[lo_s:hi_s], y[lo_s:hi_s], ww[lo_s:hi_s]
         pos = 0

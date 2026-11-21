@@ -251,7 +251,14 @@ tbody tr:last-child td{border-bottom:0}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
-<style>body{margin:0} a{color:var(--accent)} a.btn{text-decoration:none} .drop{cursor:default}</style>
+<style>.mbw{display:flex;align-items:center;gap:8px;margin-top:6px}
+.mb{flex:1;height:6px;border-radius:9px;background:var(--surface);border:1px solid var(--line);overflow:hidden;position:relative;max-width:320px}
+.mb i{display:block;height:100%;background:var(--accent);transition:width .4s linear}
+.mb.ind i{width:35%;position:absolute;animation:slide 1.4s ease-in-out infinite}
+@keyframes slide{0%{left:-35%}100%{left:100%}}
+.mbt{font-family:var(--f-mono);font-size:.74rem;color:var(--muted);white-space:nowrap}
+.stl .tm{white-space:nowrap}
+body{margin:0} a{color:var(--accent)} a.btn{text-decoration:none} .drop{cursor:default}</style>
 </head>
 <body>
 <header class="top">

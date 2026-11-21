@@ -102,24 +102,35 @@ def layout_from_agp(path, names: list[str]) -> Layout:
 
 
 # -------------------------------------------------------------- matrix readers
-def _records_hicstraw(path, resolution, chroms=None):
+def _records_hicstraw(path, resolution, chroms=None, progress=None):
     import hicstraw  # pip install hic-straw
 
     hic = hicstraw.HiCFile(str(path))
     cs = [c for c in hic.getChromosomes() if c.name.lower() != "all" and (chroms is None or c.name in chroms)]
+    # work ~ size of each block: weight chromosome pairs by length product
+    tot = sum(a.length * b.length for i, a in enumerate(cs) for b in cs[i:]) or 1
+    done = 0
     for i, c1 in enumerate(cs):
         for c2 in cs[i:]:
+            if progress:
+                progress(done / tot)
+            done += c1.length * c2.length
             mzd = hic.getMatrixZoomData(c1.name, c2.name, "observed", "NONE", "BP", resolution)
             r = mzd.getRecords(0, c1.length, 0, c2.length)
             if r:
                 yield c1.name, c2.name, np.array([[x.binX, x.binY, x.counts] for x in r], np.float64)
 
 
-def _records_juicer_tools(path, resolution, chroms, jar):
+def _records_juicer_tools(path, resolution, chroms, jar, progress=None):
     tmp = tempfile.mkdtemp()
+    n = len(chroms) * (len(chroms) + 1) // 2 or 1
+    k = 0
     try:
         for i, c1 in enumerate(chroms):
             for c2 in chroms[i:]:
+                if progress:
+                    progress(k / n)
+                k += 1
                 out = os.path.join(tmp, "d.txt")
                 subprocess.run(["java", f"-Xmx{os.environ.get('JAVA_MEM', '8g')}", "-jar", jar, "dump", "observed",
                                 "NONE", str(path), c1, c2, "BP", str(resolution), out],
@@ -162,18 +173,18 @@ def _records_text(path):
 
 
 def load_matrix_contacts(path, layout: Layout, resolution: int = 5000, juicer_tools: str | None = None,
-                         scale: int = 1) -> Contacts:
+                         scale: int = 1, progress=None) -> Contacts:
     """Read a binned contact matrix and express it as weighted contacts in contig coordinates."""
     p = str(path)
     if p.endswith(".hic"):
         try:
             import hicstraw  # noqa: F401
-            recs = _records_hicstraw(p, resolution, set(layout.blocks))
+            recs = _records_hicstraw(p, resolution, set(layout.blocks), progress)
         except ImportError:
             jar = juicer_tools or os.environ.get("JUICER_TOOLS")
             if not jar:
                 raise SystemExit("reading .hic needs `pip install hic-straw` or --juicer-tools /path/juicer_tools.jar")
-            recs = _records_juicer_tools(p, resolution, sorted(layout.blocks), jar)
+            recs = _records_juicer_tools(p, resolution, sorted(layout.blocks), jar, progress)
     elif p.endswith((".mcool", ".cool")):
         recs = _records_cooler(p, resolution)
     else:
