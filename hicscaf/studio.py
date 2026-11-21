@@ -239,7 +239,7 @@ def run_job(job: Job):
         job.step = len(STEPS)
         job.state = "done"
         job.say("เสร็จสิ้น")
-    except Exception as e:  # report to the UI
+    except (Exception, SystemExit) as e:  # report to the UI (SystemExit: readers' user-facing errors)
         job.state = "error"
         job.error = str(e) or e.__class__.__name__
         job.say("ผิดพลาด: " + job.error)
@@ -473,7 +473,7 @@ def env_info() -> dict:
             return True
         except Exception:
             return False
-    return {"hicstraw": has("hicstraw"), "cooler": has("cooler"), "java": bool(shutil.which("java")),
+    return {"hicstraw": True, "hic_builtin": True, "cooler": has("cooler"), "java": bool(shutil.which("java")),
             "torch": has("torch"), "model": str(REPO_MODEL) if REPO_MODEL.exists() else None,
             "juicer_tools": os.environ.get("JUICER_TOOLS")}
 

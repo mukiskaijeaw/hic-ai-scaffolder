@@ -121,6 +121,29 @@ def _records_hicstraw(path, resolution, chroms=None, progress=None):
                 yield c1.name, c2.name, np.array([[x.binX, x.binY, x.counts] for x in r], np.float64)
 
 
+def _records_hicfile(path, resolution, chroms=None, progress=None):
+    from .hicfile import HicFile
+
+    hic = HicFile.open(path)
+    if resolution not in hic.resolutions:
+        raise SystemExit(f"{os.path.basename(path)} has no {resolution:,} bp resolution; available: "
+                         + ", ".join(f"{r:,}" for r in sorted(hic.resolutions)))
+    cs = [c for c in hic.chroms if c.name.lower() != "all" and (chroms is None or c.name in chroms)]
+    if not cs:
+        raise SystemExit(f"no chromosome of {os.path.basename(path)} matches the draft layout "
+                         f"(.hic has {', '.join(c.name for c in hic.chroms[:5])} ...)")
+    pairs = [(a, b) for i, a in enumerate(cs) for b in cs[i:]]
+    tot = sum(a.length * b.length for a, b in pairs) or 1
+    done = 0
+    for a, b in pairs:
+        w = a.length * b.length
+        sub = (lambda f, d=done, w=w: progress((d + f * w) / tot)) if progress else None
+        r = hic.records(a, b, resolution, sub)
+        done += w
+        if len(r):
+            yield a.name, b.name, r
+
+
 def _records_juicer_tools(path, resolution, chroms, jar, progress=None):
     tmp = tempfile.mkdtemp()
     n = len(chroms) * (len(chroms) + 1) // 2 or 1
@@ -177,14 +200,11 @@ def load_matrix_contacts(path, layout: Layout, resolution: int = 5000, juicer_to
     """Read a binned contact matrix and express it as weighted contacts in contig coordinates."""
     p = str(path)
     if p.endswith(".hic"):
-        try:
-            import hicstraw  # noqa: F401
-            recs = _records_hicstraw(p, resolution, set(layout.blocks), progress)
-        except ImportError:
-            jar = juicer_tools or os.environ.get("JUICER_TOOLS")
-            if not jar:
-                raise SystemExit("reading .hic needs `pip install hic-straw` or --juicer-tools /path/juicer_tools.jar")
+        jar = juicer_tools or os.environ.get("JUICER_TOOLS")
+        if jar:
             recs = _records_juicer_tools(p, resolution, sorted(layout.blocks), jar, progress)
+        else:
+            recs = _records_hicfile(p, resolution, set(layout.blocks), progress)  # built-in reader
     elif p.endswith((".mcool", ".cool")):
         recs = _records_cooler(p, resolution)
     else:
