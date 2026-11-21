@@ -188,20 +188,46 @@ class Contacts:
         return read_pairs(path)
 
 
-def read_pairs(path, names: list[str] | None = None, min_mapq: int = 0) -> Contacts:
+def _raw_pos(fh) -> int:
+    """Byte offset in the file on disk (compressed offset for .gz), for progress reporting."""
+    raw = getattr(fh, "buffer", fh)
+    raw = getattr(raw, "fileobj", raw)
+    try:
+        return raw.tell()
+    except (OSError, ValueError):
+        return 0
+
+
+def read_pairs(path, names: list[str] | None = None, min_mapq: int = 0, progress=None) -> Contacts:
     """Read a 4DN .pairs file, a YaHS-style BED of read alignments, or a plain TSV `ctg1 pos1 ctg2 pos2`.
 
     For .pairs the standard columns are readID chr1 pos1 chr2 pos2 strand1 strand2.
     For .bed (e.g. YaHS test data LYZE01.hic.bed.gz) the two reads of a pair are consecutive lines:
     contig start end readname [mapq].
+    `progress(fraction)` is called now and then with the share of the file read so far.
     """
+    from array import array
+
     index = {n: i for i, n in enumerate(names)} if names else {}
     order = list(names) if names else []
-    c1, p1, c2, p2 = [], [], [], []
-    if str(path).endswith((".bed", ".bed.gz")):
-        with _open(path) as fh:
+    # compact typed arrays: a Python list of ints costs ~5x more memory on big Hi-C files
+    c1, p1, c2, p2 = array("i"), array("q"), array("i"), array("q")
+    size = max(1, Path(path).stat().st_size) if progress else 1
+    every = 500_000
+
+    def idx(n):
+        i = index.get(n)
+        if i is None:
+            i = index[n] = len(order)
+            order.append(n)
+        return i
+
+    with _open(path) as fh:
+        if str(path).endswith((".bed", ".bed.gz")):
             prev = None
-            for line in fh:
+            for k, line in enumerate(fh):
+                if progress and k % every == 0:
+                    progress(_raw_pos(fh) / size)
                 f = line.split()
                 if len(f) < 4:
                     continue
@@ -211,28 +237,24 @@ def read_pairs(path, names: list[str] | None = None, min_mapq: int = 0) -> Conta
                     prev = (q, f[0], int(f[1]), mq)
                     continue
                 if min(prev[3], mq) >= min_mapq:
-                    for n in (prev[1], f[0]):
-                        if n not in index:
-                            index[n] = len(order); order.append(n)
-                    c1.append(index[prev[1]]); p1.append(prev[2]); c2.append(index[f[0]]); p2.append(int(f[1]))
+                    c1.append(idx(prev[1])); p1.append(prev[2]); c2.append(idx(f[0])); p2.append(int(f[1]))
                 prev = None
-        return Contacts(order, np.array(c1, np.int32), np.array(p1, np.int64), np.array(c2, np.int32),
-                        np.array(p2, np.int64))
-    with _open(path) as fh:
-        for line in fh:
-            if line.startswith("#"):
-                continue
-            f = line.split()
-            if len(f) >= 7:  # .pairs
-                a, pa, b, pb = f[1], f[2], f[3], f[4]
-            else:
-                a, pa, b, pb = f[0], f[1], f[2], f[3]
-            for n in (a, b):
-                if n not in index:
-                    index[n] = len(order)
-                    order.append(n)
-            c1.append(index[a]); p1.append(int(pa)); c2.append(index[b]); p2.append(int(pb))
-    return Contacts(order, np.array(c1, np.int32), np.array(p1, np.int64), np.array(c2, np.int32), np.array(p2, np.int64))
+        else:
+            for k, line in enumerate(fh):
+                if progress and k % every == 0:
+                    progress(_raw_pos(fh) / size)
+                if line.startswith("#"):
+                    continue
+                f = line.split()
+                if len(f) >= 7:  # .pairs
+                    a, pa, b, pb = f[1], f[2], f[3], f[4]
+                else:
+                    a, pa, b, pb = f[0], f[1], f[2], f[3]
+                c1.append(idx(a)); p1.append(int(pa)); c2.append(idx(b)); p2.append(int(pb))
+    if progress:
+        progress(1.0)
+    return Contacts(order, np.frombuffer(c1, np.int32).copy(), np.frombuffer(p1, np.int64).copy(),
+                    np.frombuffer(c2, np.int32).copy(), np.frombuffer(p2, np.int64).copy())
 
 
 def write_pairs(ct: Contacts, path) -> None:

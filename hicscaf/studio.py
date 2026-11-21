@@ -37,7 +37,7 @@ EXT = {
     "truth": (".tsv", ".agp", ".assembly"),
 }
 STEPS = [
-    ("load", "อ่านไฟล์"),
+    ("load", "อ่านไฟล์ Hi-C"),
     ("map", "จับคู่ contact กับ contig"),
     ("cnn", "JunctionCNN ตรวจรอยต่อ"),
     ("gnn", "EdgeGNN ทำนายคู่ปลาย contig"),
@@ -56,7 +56,9 @@ class Job:
         self.id, self.params, self.outdir = jid, params, outdir
         self.created = time.time()
         self.state = "queued"          # queued | running | done | error
-        self.step = -1
+        self._step = -1
+        # per step: start / end time and fraction done (None = no estimate available)
+        self.prog = [{"start": None, "end": None, "frac": None} for _ in STEPS]
         self.log: list[str] = []
         self.error = None
         self.lock = threading.Lock()
@@ -64,16 +66,48 @@ class Job:
         self.result: dict | None = None
         self.maps: dict = {}
 
+    @property
+    def step(self):
+        return self._step
+
+    @step.setter
+    def step(self, i: int):
+        now = time.time()
+        with self.lock:
+            for k in range(max(self._step, 0), min(i, len(STEPS))):
+                if self.prog[k]["start"] is not None and self.prog[k]["end"] is None:
+                    self.prog[k]["end"] = now
+                    self.prog[k]["frac"] = 1.0
+            if 0 <= i < len(STEPS) and self.prog[i]["start"] is None:
+                self.prog[i]["start"] = now
+                self.prog[i]["frac"] = 0.0
+            self._step = i
+
+    def progress(self, frac: float):
+        """Report progress of the current step (0..1)."""
+        if 0 <= self._step < len(STEPS):
+            self.prog[self._step]["frac"] = float(min(1.0, max(0.0, frac)))
+
     def say(self, msg: str):
         t = time.time() - self.created
         with self.lock:
             self.log.append(f"[{t:6.1f}s] {msg}")
 
     def to_status(self):
+        now = time.time()
         with self.lock:
-            return {"id": self.id, "state": self.state, "step": self.step, "steps": [s[1] for s in STEPS],
-                    "log": self.log[-200:], "error": self.error, "params": self.params,
-                    "created": self.created, "name": self.params.get("name") or self.id}
+            steps = []
+            for (key, label), pr in zip(STEPS, self.prog):
+                st, en, fr = pr["start"], pr["end"], pr["frac"]
+                el = (en or now) - st if st else 0.0
+                eta = None
+                if st and not en and fr is not None and fr >= 0.01 and el >= 2:
+                    eta = el * (1 - fr) / fr
+                steps.append({"key": key, "label": label, "elapsed": round(el, 1), "frac": fr,
+                              "eta": None if eta is None else round(eta, 1), "done": en is not None})
+            return {"id": self.id, "state": self.state, "step": self._step, "steps": [s[1] for s in STEPS],
+                    "detail": steps, "log": self.log[-200:], "error": self.error, "params": self.params,
+                    "created": self.created, "now": now, "name": self.params.get("name") or self.id}
 
 
 JOBS: dict[str, Job] = {}
@@ -88,69 +122,111 @@ def _resolve(p: str | None) -> str | None:
     return p
 
 
+def _cache_key(path: str, extra: str) -> str:
+    import hashlib
+    st = os.stat(path)
+    return hashlib.sha1(f"{os.path.abspath(path)}|{st.st_size}|{int(st.st_mtime)}|{extra}".encode()).hexdigest()[:16]
+
+
+def _score_junctions(job, cnn, patches, batch=256):
+    if cnn is None or len(patches) == 0:
+        return np.full(len(patches), 0.5)
+    import torch
+    out = []
+    with torch.no_grad():
+        for i in range(0, len(patches), batch):
+            out.append(torch.sigmoid(cnn(torch.from_numpy(patches[i:i + batch]))).numpy())
+            job.progress(0.5 + 0.5 * min(1.0, (i + batch) / len(patches)))
+    return np.concatenate(out)
+
+
 def run_job(job: Job):
     from .features import adjacencies_from_scaffolds, auto_bin_size, build_graph, junction_patches, map_contacts, \
         ComponentSet
-    from .io import Contacts, add_missing_components, read_fasta, read_lengths
+    from .io import Contacts, add_missing_components, read_lengths, read_pairs
     from .models import load
     from .precomputed import layout_from_agp, layout_from_assembly, load_matrix_contacts, load_scaffolds
-    from .scaffold import edge_probs, score_junctions
+    from .scaffold import edge_probs
 
     P = job.params
+    cache_dir = job.outdir.parent.parent / "cache"
     try:
         job.state = "running"
-        # 1 load ----------------------------------------------------------------
+        # 1 read files ------------------------------------------------------------
         job.step = 0
         contigs, pairs, draft_p, hic, truth_p = (_resolve(P.get(k)) for k in ("contigs", "pairs", "draft", "hic", "truth"))
         model = _resolve(P.get("model") or str(REPO_MODEL))
         draft, lengths = (load_scaffolds(draft_p) if draft_p else (None, {}))
         if contigs:
+            job.say(f"อ่านความยาว contig จาก {Path(contigs).name}")
             lengths = read_lengths(contigs)
             job.say(f"contig {len(lengths):,} ตัว รวม {_fmt_bp(sum(lengths.values()))}")
         if draft is not None:
             job.say(f"draft: {len(draft):,} scaffold จาก {Path(draft_p).name}")
-        if P["mode"] == "refine":
-            if not (hic and draft_p):
-                raise ValueError("โหมด .hic ต้องมีไฟล์ contact map และ draft (.assembly / .agp)")
+        src = hic if P["mode"] == "refine" else pairs
+        if not src:
+            raise ValueError("โหมด .hic ต้องมีไฟล์ contact map และ draft (.assembly / .agp)" if P["mode"] == "refine"
+                             else "โหมด pairs ต้องมีไฟล์ contigs และไฟล์ Hi-C pairs")
+        res = int(P.get("resolution") or 5000)
+        extra = f"{P['mode']}|{res}|{P.get('scale')}|{_cache_key(draft_p, '') if (draft_p and P['mode'] == 'refine') else ''}"
+        cache = cache_dir / f"{_cache_key(src, extra)}.npz"
+        if cache.exists() and not str(src).endswith(".npz"):
+            job.say(f"ใช้ข้อมูลที่อ่านไว้แล้วจากรอบก่อน ({Path(src).name}) ไม่ต้องอ่านไฟล์ใหม่")
+            contacts = Contacts.load(cache)
+        elif P["mode"] == "refine":
+            if not draft_p:
+                raise ValueError("โหมด .hic ต้องมีไฟล์ draft (.assembly / .agp)")
             names = list(lengths)
-            res = int(P.get("resolution") or 5000)
-            if draft_p.endswith(".assembly"):
-                layout = layout_from_assembly(draft, names)
-            else:
-                layout = layout_from_agp(draft_p, names)
-            job.step = 1
-            job.say(f"อ่าน {Path(hic).name} ที่ความละเอียด {res:,} bp (ไฟล์ใหญ่อาจใช้หลายนาที)")
-            contacts = load_matrix_contacts(hic, layout, res, P.get("juicer_tools") or None, int(P.get("scale") or 1))
+            layout = layout_from_assembly(draft, names) if draft_p.endswith(".assembly") else layout_from_agp(draft_p, names)
+            job.say(f"อ่าน {Path(hic).name} ที่ความละเอียด {res:,} bp ({os.path.getsize(hic) / 1e9:.1f} GB)")
+            contacts = load_matrix_contacts(hic, layout, res, P.get("juicer_tools") or None, int(P.get("scale") or 1),
+                                            progress=job.progress)
         else:
-            if not (contigs and pairs):
-                raise ValueError("โหมด pairs ต้องมีไฟล์ contigs และไฟล์ Hi-C pairs")
-            job.step = 1
-            job.say(f"อ่าน Hi-C pairs จาก {Path(pairs).name}")
-            contacts = Contacts.load(pairs)
+            if not contigs:
+                raise ValueError("โหมด pairs ต้องมีไฟล์ contigs (.fa / .fai)")
+            job.say(f"อ่าน Hi-C pairs จาก {Path(pairs).name} ({os.path.getsize(pairs) / 1e9:.2f} GB)")
+            contacts = Contacts.load(pairs) if pairs.endswith(".npz") else read_pairs(pairs, progress=job.progress)
+        if not cache.exists() and not str(src).endswith(".npz"):
+            try:
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                tmp = cache.with_suffix(".tmp.npz")
+                np.savez(tmp, names=np.array(contacts.names), c1=contacts.c1, p1=contacts.p1, c2=contacts.c2,
+                         p2=contacts.p2, w=contacts.w, resolution=contacts.resolution)  # uncompressed: fast
+                os.replace(tmp, cache)
+                job.say("บันทึกข้อมูลที่อ่านแล้วไว้ รอบหน้าจะเร็วขึ้น")
+            except OSError:
+                pass
         job.say(f"contact {float(contacts.w.sum()):,.0f} คู่ ({len(contacts):,} แถว)")
         if not lengths:
             raise ValueError("ไม่รู้ความยาว contig: ใส่ไฟล์ contigs (.fa / .fai)")
 
         # 2 map -----------------------------------------------------------------
+        job.step = 1
         cnn, gnn, meta = load(model)
+        job.progress(0.1)
         draft2 = add_missing_components(draft or [], lengths)
         cs = ComponentSet.from_scaffolds(draft2)
+        job.progress(0.2)
         mapped = map_contacts(cs, contacts)
+        del contacts
+        job.progress(0.9)
         bin_size = int(P.get("bin_size") or 0) or auto_bin_size(
-            mapped, int(cs.lengths.sum()), min_bin=max(1_000, 2 * contacts.resolution))
+            mapped, int(cs.lengths.sum()), min_bin=max(1_000, 2 * job_resolution(P)))
         job.say(f"ชิ้น contig {len(cs.comps):,} ชิ้น, contact ที่ใช้ได้ {float(mapped[4].sum()):,.0f}, bin {bin_size:,} bp")
 
         # 3 cnn -----------------------------------------------------------------
         job.step = 2
         dadj = adjacencies_from_scaffolds(cs, draft2)
-        patches, jkeys, _ = junction_patches(cs, draft2, mapped, bin_size)
-        js = score_junctions(cnn, patches)
+        patches, jkeys, _ = junction_patches(cs, draft2, mapped, bin_size, progress=lambda f: job.progress(0.5 * f))
+        js = _score_junctions(job, cnn, patches)
         jscore = dict(zip(jkeys, js))
         job.say(f"ตรวจรอยต่อ {len(jkeys):,} จุด: น่าสงสัย (P<0.5) {int((js < 0.5).sum()):,} จุด")
 
         # 4 gnn -----------------------------------------------------------------
         job.step = 3
+        job.prog[3]["frac"] = None  # one big call: no progress available
         g = build_graph(cs, mapped, dadj, jscore)
+        job.progress(0.6)
         probs = edge_probs(gnn, g)
         job.say(f"graph {len(cs.comps):,} node, {len(g.edge_index):,} edge")
 
@@ -170,6 +246,10 @@ def run_job(job: Job):
         traceback.print_exc()
 
 
+def job_resolution(P) -> int:
+    return int(P.get("resolution") or 5000) * int(P.get("scale") or 1) if P.get("mode") == "refine" else 0
+
+
 def decode_and_write(job: Job, min_prob: float):
     from .evaluate import evaluate, nx
     from .features import adjacencies_from_scaffolds
@@ -179,16 +259,24 @@ def decode_and_write(job: Job, min_prob: float):
 
     c = job.ctx
     cs, draft, edges, probs = c["cs"], c["draft"], c["edges"], c["probs"]
+    live = job.state == "running"
     scafs = greedy_decode(cs, edges, probs, min_prob)
-    job.step = 5
+    if live:
+        job.step = 5
     out = job.outdir
     write_agp(scafs, out / "corrected.agp")
     write_assembly(scafs, c["lengths"], out / "corrected.assembly")
+    if live:
+        job.progress(0.15)
     if c["fasta"]:
         if "seqs" not in c:
             job.say("อ่านลำดับเบสเพื่อเขียน corrected.fa")
             c["seqs"] = read_fasta(c["fasta"])
+        if live:
+            job.progress(0.5)
         write_fasta(agp_to_fasta(scafs, c["seqs"]), out / "corrected.fa")
+    if live:
+        job.progress(0.85)
     edits = compute_edits(cs, draft, scafs, edges, probs, c["jscore"], c["dadj"], min_prob)
     with open(out / "edits.tsv", "w", encoding="utf-8") as fh:
         fh.write("type\tcontigs\tdetail\tgnn_prob\tcnn_prob\tstatus\n")
