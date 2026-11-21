@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>hicscaf Studio</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anuphan:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: instrument-panel app. Sticky header with 3-step flow (upload → run → results); results is a two-column lab bench (contact map | chromosome tracks) that stacks on phones. */
+:root{
+  --bg:#edf1f2; --surface:#ffffff; --surface-2:#f5f8f9; --ink:#13202a; --muted:#56666f; --line:#d5dde1;
+  --accent:#0f6674; --accent-ink:#ffffff; --accent-soft:#dcedef;
+  --ok:#23784a; --ok-soft:#dcefe3; --warn:#9a6200; --warn-soft:#f6ead2; --bad:#b33a25; --bad-soft:#f6e0db;
+  --t-flip:#c27c00; --t-move:#2f62c4; --t-inter:#a8327f; --t-place:#1d8566;
+  --map-lo:#ffffff; --map-hi:#c8102e; --map-grid:rgba(19,32,42,.38); --map-sel:#0f6674;
+  --shadow:0 1px 2px rgba(19,32,42,.06),0 4px 14px rgba(19,32,42,.05);
+  --f-display:"Anuphan","IBM Plex Sans Thai",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans Thai",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0c1316; --surface:#131c20; --surface-2:#18242a; --ink:#e2eaed; --muted:#93a3ab; --line:#283840;
+  --accent:#55b8c4; --accent-ink:#062429; --accent-soft:#143840;
+  --ok:#5cc58b; --ok-soft:#163626; --warn:#e2a543; --warn-soft:#3a2c12; --bad:#ef7c66; --bad-soft:#3d1d17;
+  --t-flip:#eaa53a; --t-move:#6e98ee; --t-inter:#dd6bb6; --t-place:#4cc59f;
+  --map-lo:#0a1013; --map-hi:#ff5a45; --map-grid:rgba(226,234,237,.4); --map-sel:#55b8c4;
+  --shadow:0 1px 2px rgba(0,0,0,.3); color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#0c1316; --surface:#131c20; --surface-2:#18242a; --ink:#e2eaed; --muted:#93a3ab; --line:#283840;
+  --accent:#55b8c4; --accent-ink:#062429; --accent-soft:#143840;
+  --ok:#5cc58b; --ok-soft:#163626; --warn:#e2a543; --warn-soft:#3a2c12; --bad:#ef7c66; --bad-soft:#3d1d17;
+  --t-flip:#eaa53a; --t-move:#6e98ee; --t-inter:#dd6bb6; --t-place:#4cc59f;
+  --map-lo:#0a1013; --map-hi:#ff5a45; --map-grid:rgba(226,234,237,.4); --map-sel:#55b8c4;
+  --shadow:0 1px 2px rgba(0,0,0,.3); color-scheme:dark;}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.25}
+h1{font-size:clamp(1.6rem,3.4vw,2.25rem);font-weight:700}
+h2{font-size:1.15rem;font-weight:600}
+h3{font-size:1rem;font-weight:600}
+p{margin:0}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:1240px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* header */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--surface);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:20px;padding-block:10px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--f-display);font-weight:700;font-size:1.1rem;white-space:nowrap}
+.brand svg{flex:none}
+.brand small{font-family:var(--f-body);font-weight:500;color:var(--muted);font-size:.8rem}
+.steps{display:flex;gap:4px;flex-wrap:wrap;flex:1}
+.steps a{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;color:var(--muted);text-decoration:none;font-weight:500;font-size:.92rem}
+.steps a .n{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1.5px solid currentColor;font-size:.75rem;font-family:var(--f-mono)}
+.steps a:hover{color:var(--ink);background:var(--surface-2)}
+.steps a[aria-current="page"]{color:var(--accent-ink);background:var(--accent)}
+.steps a[aria-current="page"] .n{border-color:var(--accent-ink)}
+.simtag{font-size:.78rem;font-weight:600;letter-spacing:.02em;padding:4px 10px;border-radius:6px;background:var(--warn-soft);color:var(--warn);white-space:nowrap}
+
+main{padding-block:28px 64px}
+.view{display:grid;gap:20px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:20px;min-width:0}
+.card-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.card-h p{font-size:.88rem}
+.eyebrow{font-size:.75rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:500;font-size:.92rem;white-space:nowrap}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.primary:hover{filter:brightness(1.08);color:var(--accent-ink)}
+.btn.lg{padding:12px 22px;font-size:1rem}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface-2)}
+.seg button{border:0;background:transparent;padding:7px 14px;cursor:pointer;font-size:.9rem;font-weight:500;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.note{font-size:.82rem;color:var(--muted)}
+
+/* upload */
+.intro{display:grid;gap:8px;max-width:70ch}
+.intro p{color:var(--muted)}
+.up-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:20px;align-items:start}
+.drops{display:grid;gap:12px}
+.drop{border:1.5px dashed var(--line);border-radius:var(--r);padding:16px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;background:var(--surface-2);transition:border-color .15s,background .15s;cursor:pointer}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop .ico{width:44px;height:44px;border-radius:8px;display:grid;place-items:center;background:var(--surface);border:1px solid var(--line);font-family:var(--f-mono);font-size:.72rem;font-weight:500;color:var(--accent)}
+.drop .t{font-weight:600}
+.drop .f{font-size:.85rem;color:var(--muted);overflow-wrap:anywhere}
+.drop .f b{color:var(--ink);font-weight:500;font-family:var(--f-mono);font-size:.82rem}
+.drop .err{color:var(--bad)}
+.drop input{display:none}
+.chip{display:inline-block;font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.form{display:grid;gap:16px}
+.field{display:grid;gap:6px}
+.field label,.field .lbl{font-weight:600;font-size:.9rem}
+.field select{padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);width:100%}
+.radios{display:flex;gap:8px;flex-wrap:wrap}
+.radios label{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer;font-weight:500;font-size:.9rem;background:var(--surface)}
+.radios label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.range-row{display:flex;align-items:center;gap:12px}
+.range-row input{flex:1;accent-color:var(--accent)}
+.range-row output{font-family:var(--f-mono);font-weight:500;min-width:3.2em;text-align:right}
+.cmd{position:relative;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:12px 14px;font-family:var(--f-mono);font-size:.8rem;line-height:1.55;white-space:pre;overflow-x:auto}
+.cmd-wrap{display:grid;gap:6px}
+.cmd-wrap .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pipeline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.pipe{border-top:3px solid var(--accent);background:var(--surface);border-radius:0 0 var(--r) var(--r);padding:14px 16px;border-left:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.pipe h3{margin-bottom:4px}
+.pipe p{font-size:.88rem;color:var(--muted)}
+.pipe .mono{font-size:.75rem;color:var(--accent)}
+
+/* run */
+.run-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.meta{display:flex;gap:18px;flex-wrap:wrap;font-size:.86rem;color:var(--muted)}
+.meta b{color:var(--ink);font-weight:500}
+.bar{height:8px;border-radius:99px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s linear}
+.run-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:20px;align-items:start}
+.stl{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.stl li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 8px;border-radius:8px}
+.stl li.active{background:var(--accent-soft)}
+.stl .dot{width:24px;height:24px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-size:.7rem;font-family:var(--f-mono);color:var(--muted)}
+.stl li.active .dot{border-color:var(--accent);color:var(--accent);animation:pulse 1.2s infinite}
+.stl li.done .dot{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.stl .nm{font-weight:600;font-size:.93rem}
+.stl .ds{font-size:.82rem;color:var(--muted)}
+.stl .tm{font-family:var(--f-mono);font-size:.78rem;color:var(--muted)}
+@keyframes pulse{50%{box-shadow:0 0 0 5px var(--accent-soft)}}
+.log{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;height:220px;overflow:auto;font-family:var(--f-mono);font-size:.76rem;line-height:1.6;padding:10px 12px;white-space:pre-wrap}
+.log .ts{color:var(--muted)}
+.log .hl{color:var(--accent)}
+.patches{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:10px}
+.patch{display:grid;gap:4px;font-size:.7rem;font-family:var(--f-mono);text-align:center}
+.patch canvas{width:100%;aspect-ratio:1;border-radius:4px;border:2px solid var(--line);image-rendering:pixelated}
+.patch.bad canvas{border-color:var(--bad)}
+.patch.good canvas{border-color:var(--ok)}
+.patch.bad span{color:var(--bad)}
+.patch.good span{color:var(--ok)}
+
+/* results */
+.res-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.thr{display:grid;gap:4px;min-width:min(340px,100%)}
+.thr .lbl{font-size:.85rem;font-weight:600}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:grid;gap:2px}
+.tile .k{font-size:.82rem;color:var(--muted);font-weight:500}
+.tile .v{font-family:var(--f-display);font-size:1.7rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.tile .s{font-size:.8rem;color:var(--muted)}
+.tile .v small{font-size:.95rem;color:var(--muted);font-weight:500}
+.tile.ok .v{color:var(--ok)} .tile.warn .v{color:var(--warn)}
+.bench{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:20px;align-items:start}
+.mapbox{position:relative;width:100%;max-width:640px;margin:0 auto}
+.mapbox canvas{display:block;width:100%;aspect-ratio:1;border:1px solid var(--line);border-radius:4px;image-rendering:pixelated;cursor:crosshair;background:var(--surface-2)}
+.axislab{display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:.72rem;color:var(--muted);margin-top:4px}
+.readout{font-family:var(--f-mono);font-size:.76rem;color:var(--muted);min-height:2.6em;margin-top:8px;overflow-wrap:anywhere}
+.readout b{color:var(--ink);font-weight:500}
+.mapnote{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:.8rem;color:var(--muted);margin-top:6px}
+.ramp{width:90px;height:8px;border-radius:2px;border:1px solid var(--line);background:linear-gradient(90deg,var(--map-lo),var(--map-hi))}
+.karyo{display:grid;gap:3px;max-height:640px;overflow:auto;padding-right:4px}
+.krow{display:grid;grid-template-columns:44px minmax(0,1fr) 26px;gap:8px;align-items:center;cursor:pointer;padding:2px 4px;border-radius:5px}
+.krow:hover{background:var(--surface-2)}
+.krow.sel{background:var(--accent-soft)}
+.krow .nm{font-family:var(--f-mono);font-size:.74rem;color:var(--muted);text-align:right}
+.krow.sel .nm{color:var(--accent);font-weight:500}
+.krow .cnt{font-family:var(--f-mono);font-size:.7rem;text-align:center;border-radius:4px}
+.krow .cnt.has{background:var(--warn-soft);color:var(--warn)}
+.ktrack{display:flex;height:14px;gap:1px;min-width:0}
+.seg-c{height:100%;min-width:1px;border-radius:1px;position:relative}
+.seg-c.flip{background-image:repeating-linear-gradient(135deg,transparent 0 2px,rgba(0,0,0,.45) 2px 4px)}
+.seg-c.foreign{outline:2px solid var(--ink);outline-offset:-1px;z-index:1}
+.seg-c.mark::after{content:"";position:absolute;left:50%;top:-5px;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:var(--warn)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin-top:12px}
+.legend span{display:flex;align-items:center;gap:6px}
+.sw{width:22px;height:10px;border-radius:2px;display:inline-block;background:hsl(200 45% 55%)}
+.sw.flip{background-image:repeating-linear-gradient(135deg,transparent 0 2px,rgba(0,0,0,.45) 2px 4px)}
+.sw.foreign{outline:2px solid var(--ink);outline-offset:-1px;background:hsl(330 45% 58%)}
+.zoom-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.9fr);gap:20px;align-items:start}
+.zoomctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.zoomctl select{padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.ztrack{display:flex;height:30px;gap:1px;margin-top:10px}
+.ztrack .seg-c{display:grid;place-items:center;font-family:var(--f-mono);font-size:.62rem;color:rgba(0,0,0,.72);overflow:hidden;white-space:nowrap;cursor:pointer}
+.ztrack .seg-c.hl{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--ink)}
+.detail{display:grid;gap:14px}
+.dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 16px;font-size:.88rem;margin:0}
+.dl dt{color:var(--muted)}
+.dl dd{margin:0;font-family:var(--f-mono);font-size:.84rem;overflow-wrap:anywhere}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pair figure{margin:0;display:grid;gap:4px}
+.pair canvas{width:100%;aspect-ratio:1;border:1px solid var(--line);border-radius:4px;image-rendering:pixelated}
+.pair figcaption{font-size:.78rem;color:var(--muted);text-align:center}
+.empty{padding:24px;border:1px dashed var(--line);border-radius:var(--r);color:var(--muted);font-size:.9rem;text-align:center}
+.tbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.tbar button{border:1px solid var(--line);background:var(--surface);padding:5px 12px;border-radius:999px;font-size:.84rem;cursor:pointer;font-weight:500}
+.tbar button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.tbar button .c{font-family:var(--f-mono);font-size:.75rem;opacity:.75;margin-left:4px}
+.tscroll{overflow-x:auto;max-height:520px;overflow-y:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th{text-align:left;font-weight:600;font-size:.8rem;color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line);background:var(--surface-2);position:sticky;top:0;z-index:1;white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+.edits tbody tr{cursor:pointer}
+.edits tbody tr:hover td{background:var(--surface-2)}
+.edits tbody tr.sel td{background:var(--accent-soft)}
+.type{display:inline-flex;align-items:center;gap:6px;font-weight:500;white-space:nowrap;font-size:.84rem}
+.type i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.conf{display:flex;align-items:center;gap:8px;min-width:120px}
+.conf .cb{flex:1;height:6px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line);position:relative;overflow:hidden}
+.conf .cb i{position:absolute;inset:0 auto 0 0;background:var(--accent)}
+.conf .cb b{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink)}
+.conf span{font-family:var(--f-mono);font-size:.8rem;min-width:2.8em;text-align:right}
+.st{font-size:.76rem;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap;display:inline-block}
+.st.ok{background:var(--ok-soft);color:var(--ok)}
+.st.warn{background:var(--warn-soft);color:var(--warn)}
+.st.bad{background:var(--bad-soft);color:var(--bad)}
+.st.mute{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.cmp td,.cmp th{text-align:right;font-variant-numeric:tabular-nums}
+.cmp td:first-child,.cmp th:first-child{text-align:left}
+.cmp td{font-family:var(--f-mono);font-size:.84rem}
+.cmp td:first-child{font-family:var(--f-body);font-size:.88rem}
+.cmp td.best{color:var(--ok);font-weight:600}
+.cmp th.ours,.cmp td.ours{background:var(--accent-soft)}
+.files{display:grid;gap:10px}
+.file{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2)}
+.file .ext{font-family:var(--f-mono);font-size:.72rem;font-weight:500;padding:6px 8px;border-radius:6px;background:var(--surface);border:1px solid var(--line);color:var(--accent);min-width:74px;text-align:center}
+.file .nm{font-weight:600;font-family:var(--f-mono);font-size:.86rem;overflow-wrap:anywhere}
+.file .ds{font-size:.82rem;color:var(--muted)}
+.file .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.preview{grid-column:1/-1;margin:0;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 12px;font-family:var(--f-mono);font-size:.74rem;line-height:1.5;max-height:240px;overflow:auto;white-space:pre}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:8px;font-size:.88rem;opacity:0;pointer-events:none;transition:.2s;max-width:min(520px,calc(100vw - 32px));z-index:20}
+.toast.show{opacity:1;transform:translateX(-50%)}
+.foot{font-size:.8rem;color:var(--muted);max-width:80ch}
+
+@media (max-width:960px){
+  .up-grid,.run-grid,.bench,.zoom-grid{grid-template-columns:minmax(0,1fr)}
+  .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .karyo{max-height:none}
+}
+@media (max-width:620px){
+  .pipeline{grid-template-columns:minmax(0,1fr)}
+  .drop{grid-template-columns:auto minmax(0,1fr)}
+  .drop .btn{grid-column:1/-1}
+  .file{grid-template-columns:auto minmax(0,1fr)}
+  .file .acts{grid-column:1/-1;justify-content:flex-start}
+  .brand small{display:none}
+  .steps a{padding:5px 9px;font-size:.85rem}
+  .tile .v{font-size:1.4rem}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+<style>body{margin:0} a{color:var(--accent)} a.btn{text-decoration:none} .drop{cursor:default}</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="5" fill="var(--accent)"/><path d="M5 21 L21 5" stroke="var(--accent-ink)" stroke-width="2.4" stroke-linecap="round"/><rect x="5" y="5" width="7" height="7" rx="1.5" fill="var(--accent-ink)" opacity=".55"/><rect x="14" y="14" width="7" height="7" rx="1.5" fill="var(--accent-ink)" opacity=".55"/></svg>
+      hicscaf <small>Studio</small>
+    </div>
+    <nav class="steps" aria-label="ขั้นตอน">
+      <a href="#upload" data-v="upload"><span class="n">1</span>อัปโหลด</a>
+      <a href="#run" data-v="run"><span class="n">2</span>ประมวลผล</a>
+      <a href="#results" data-v="results"><span class="n">3</span>ผลลัพธ์</a>
+    </nav>
+    <span class="simtag" id="envtag" style="background:var(--accent-soft);color:var(--accent)">ทำงานบนเครื่องของคุณ</span>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- ============ UPLOAD ============ -->
+<section class="view" id="v-upload" hidden>
+  <div class="intro">
+    <span class="eyebrow">งานใหม่</span>
+    <h1>ให้ AI ตรวจและแก้ scaffold จาก Hi-C</h1>
+    <p>เลือกไฟล์ แล้วกดเริ่มประมวลผล ไฟล์ทั้งหมดอยู่บนเครื่องนี้ ไม่ได้ส่งออกไปที่ไหน ผลลัพธ์เปิดต่อใน Juicebox ได้ทันที</p>
+  </div>
+
+  <div class="up-grid">
+    <div class="card">
+      <div class="card-h">
+        <div><h2>ไฟล์ข้อมูล</h2><p class="muted">ข้อมูลของคุณเป็นแบบไหน</p></div>
+        <div class="seg" role="group" aria-label="ชนิดข้อมูล">
+          <button type="button" data-mode="correct" aria-pressed="true">contigs + Hi-C pairs</button>
+          <button type="button" data-mode="refine" aria-pressed="false">.hic + .assembly</button>
+        </div>
+      </div>
+      <div class="drops" id="drops"></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px">
+        <button class="btn" type="button" id="demo">ใช้ข้อมูลตัวอย่าง (จีโนมจำลอง)</button>
+        <span class="note">ลองระบบได้ทันทีโดยไม่ต้องมีไฟล์ของตัวเอง</span>
+      </div>
+      <p class="note" style="margin-top:12px">ไฟล์ใหญ่ (เช่น .hic หลาย GB) แนะนำให้กด "ใช้ path" แล้ววางตำแหน่งไฟล์ เช่น <span class="mono">D:\hic\data\sample.hic</span> ระบบจะอ่านไฟล์จากที่เดิมโดยไม่ต้องคัดลอก (ใน File Explorer กด Shift + คลิกขวาที่ไฟล์ แล้วเลือก "Copy as path")</p>
+    </div>
+
+    <div class="card form">
+      <h2>ตั้งค่างาน</h2>
+      <div class="field">
+        <label for="jobname">ชื่องาน</label>
+        <input id="jobname" type="text" placeholder="เช่น ปลานิล รอบที่ 1" style="padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)">
+      </div>
+      <div class="field" id="res-field" hidden>
+        <label for="res">ความละเอียดที่อ่านจาก .hic</label>
+        <select id="res">
+          <option value="1000">1 kb (แม่นที่สุด ถ้าไฟล์มี)</option>
+          <option value="2500">2.5 kb</option>
+          <option value="5000" selected>5 kb</option>
+          <option value="10000">10 kb</option>
+          <option value="25000">25 kb</option>
+        </select>
+        <span class="note">ผลทดสอบตอนนี้: ความละเอียดละเอียดกว่า (1 kb) ให้ผลดีกว่า 5–10 kb</span>
+      </div>
+      <div class="field" id="scale-field" hidden>
+        <label for="scale">Juicebox scale (จีโนมใหญ่กว่า 2.1 Gb)</label>
+        <select id="scale"><option value="1" selected>1 (ปกติ)</option><option value="2">2</option><option value="4">4</option><option value="8">8</option></select>
+      </div>
+      <div class="field">
+        <label for="mp">เกณฑ์ความมั่นใจขั้นต่ำ</label>
+        <div class="range-row"><input type="range" id="mp" min="0.3" max="0.95" step="0.01" value="0.5"><output id="mp-o" for="mp">0.50</output></div>
+        <span class="note">AI จะแก้เฉพาะจุดที่มั่นใจถึงเกณฑ์นี้ ปรับใหม่ได้ในหน้าผลลัพธ์โดยไม่ต้องรันใหม่</span>
+      </div>
+      <details class="field">
+        <summary style="cursor:pointer;font-weight:600;font-size:.9rem">ตั้งค่าขั้นสูง</summary>
+        <div class="form" style="margin-top:10px">
+          <div class="field"><label for="model">ไฟล์โมเดล</label><input id="model" type="text" class="mono" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:.8rem"></div>
+          <div class="field"><label for="binsize">bin size (bp) ว่างไว้ = อัตโนมัติ</label><input id="binsize" type="number" min="500" step="500" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)"></div>
+          <div class="field"><label for="jt">juicer_tools.jar (ใช้เมื่อไม่มี hic-straw)</label><input id="jt" type="text" class="mono" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:.8rem"></div>
+        </div>
+      </details>
+      <div id="envbox" class="note"></div>
+      <div id="formerr" class="note" style="color:var(--bad)"></div>
+      <button class="btn primary lg" id="start" type="button">เริ่มประมวลผล</button>
+    </div>
+  </div>
+
+  <div class="card" id="history-card" hidden>
+    <div class="card-h"><div><h2>งานที่ผ่านมา</h2><p class="muted">ตั้งแต่เปิดโปรแกรมครั้งนี้</p></div></div>
+    <div class="files" id="history"></div>
+  </div>
+
+  <div class="pipeline">
+    <div class="pipe"><span class="mono">ขั้น 1 · JunctionCNN</span><h3>ตรวจรอยต่อทุกจุด</h3><p>ตัด contact map 48×48 bin รอบรอยต่อใน draft แล้วให้คะแนนว่ารอยต่อนั้นถูกหรือเป็น misjoin</p></div>
+    <div class="pipe"><span class="mono">ขั้น 2 · EdgeGNN</span><h3>จับคู่ปลาย contig</h3><p>มอง contig เป็น graph แล้วทำนายว่าปลายไหนควรต่อกับปลายไหน (HH / HT / TH / TT) ซึ่งบอกทิศไปพร้อมกัน</p></div>
+    <div class="pipe"><span class="mono">ขั้น 3 · Decoder</span><h3>ประกอบใหม่</h3><p>เลือก link จากความน่าจะเป็นสูงไปต่ำ ปลายละหนึ่ง link และห้ามเกิดวง แล้วเขียน .assembly / .agp / .fa</p></div>
+  </div>
+</section>
+
+<!-- ============ RUN ============ -->
+<section class="view" id="v-run" hidden>
+  <div class="run-head">
+    <div style="display:grid;gap:6px">
+      <span class="eyebrow" id="job-id"></span>
+      <h1 id="run-title">กำลังประมวลผล</h1>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="back-upload" type="button">กลับไปแก้ไฟล์</button>
+      <button class="btn primary" id="see" type="button" disabled>ดูผลลัพธ์</button>
+    </div>
+  </div>
+  <div class="card" style="display:grid;gap:8px">
+    <div style="display:flex;justify-content:space-between;font-size:.88rem"><span id="run-stage">รอเริ่ม</span><span class="mono" id="run-time"></span></div>
+    <div class="bar"><i id="run-bar"></i></div>
+  </div>
+  <div class="run-grid">
+    <div class="card"><h2 style="margin-bottom:10px">ขั้นตอน</h2><ol class="stl" id="stl"></ol></div>
+    <div class="card"><h2 style="margin-bottom:10px">บันทึกการทำงาน</h2><div class="log" id="log" aria-live="polite" style="height:340px"></div></div>
+  </div>
+  <div class="empty" id="run-empty" hidden>ยังไม่มีงานที่กำลังรัน <a href="#upload">เริ่มงานใหม่</a></div>
+</section>
+
+<!-- ============ RESULTS ============ -->
+<section class="view" id="v-results" hidden>
+  <div class="empty" id="res-empty" hidden>ยังไม่มีผลลัพธ์ <a href="#upload">เริ่มงานใหม่</a></div>
+  <div id="res-body" class="view">
+  <div class="res-head">
+    <div style="display:grid;gap:6px">
+      <span class="eyebrow" id="res-id"></span>
+      <h1 id="res-title">ผลการแก้ scaffold</h1>
+      <div class="meta" id="res-meta"></div>
+    </div>
+    <div class="thr">
+      <label class="lbl" for="thr">เกณฑ์ความมั่นใจ (--min-prob)</label>
+      <div class="range-row"><input type="range" id="thr" min="0.3" max="0.95" step="0.01" value="0.5"><output id="thr-o" for="thr">0.50</output></div>
+      <span class="note" id="thr-note">ปล่อยแถบเลื่อนแล้วระบบจะประกอบใหม่และเขียนไฟล์ใหม่ให้</span>
+    </div>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="bench">
+    <div class="card">
+      <div class="card-h">
+        <div><h2>Contact map ทั้งจีโนม</h2><p class="muted">คลิกที่ scaffold เพื่อซูมดูด้านล่าง</p></div>
+        <div class="seg" role="group" aria-label="ก่อนหรือหลัง">
+          <button type="button" data-view="before" id="m-before">ก่อน (draft)</button>
+          <button type="button" data-view="after" id="m-after">หลัง (AI)</button>
+        </div>
+      </div>
+      <div class="mapbox"><canvas id="gmap" width="600" height="600" aria-label="contact map ทั้งจีโนม"></canvas></div>
+      <div class="mapnote"><span>contact น้อย</span><span class="ramp"></span><span>มาก</span><span>· สเกล log · กด B สลับก่อน/หลัง</span></div>
+      <div class="readout" id="g-read">ชี้ที่แผนที่เพื่อดูตำแหน่ง</div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><div><h2>แถบสี scaffold</h2><p class="muted" id="k-sub">สีของแต่ละชิ้น = scaffold ใน draft ที่ชิ้นนั้นมาจาก</p></div></div>
+      <div class="karyo" id="karyo"></div>
+      <div class="legend">
+        <span><i class="sw"></i>มาจาก draft scaffold เดียวกัน</span>
+        <span><i class="sw flip"></i>กลับทิศเทียบกับ draft</span>
+        <span><i class="sw foreign"></i>ย้ายมาจาก scaffold อื่น</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="zoomcard">
+    <div class="card-h">
+      <div><h2 id="z-title">ซูม scaffold</h2><p class="muted" id="z-sub"></p></div>
+      <div class="zoomctl">
+        <button class="btn" id="z-prev" type="button" aria-label="ก่อนหน้า">‹</button>
+        <select id="z-sel" aria-label="เลือก scaffold"></select>
+        <button class="btn" id="z-next" type="button" aria-label="ถัดไป">›</button>
+      </div>
+    </div>
+    <div class="zoom-grid">
+      <div>
+        <div class="mapbox" style="max-width:560px"><canvas id="zmap" width="480" height="480" aria-label="contact map ของ scaffold ที่เลือก"></canvas></div>
+        <div class="ztrack" id="ztrack"></div>
+        <div class="axislab"><span>0</span><span id="z-len"></span></div>
+        <div class="readout" id="z-read">ชี้ที่แผนที่หรือแถบ contig เพื่อดูรายละเอียด</div>
+      </div>
+      <div class="detail" id="detail"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><div><h2>รายการที่ AI แก้และเสนอ</h2><p class="muted">ความมั่นใจคือความน่าจะเป็นจาก EdgeGNN · "ควรตรวจ" คือจุดที่ใกล้เกณฑ์ ควรเปิดดูใน Juicebox</p></div></div>
+    <div class="tbar" id="tbar"></div>
+    <div class="tscroll">
+      <table class="edits"><thead><tr><th>ประเภท</th><th>contig</th><th>รายละเอียด</th><th>ความมั่นใจ</th><th>CNN</th><th>สถานะ</th></tr></thead><tbody id="edits"></tbody></table>
+    </div>
+    <p class="note" id="edits-more" style="margin-top:8px"></p>
+  </div>
+
+  <div class="card" id="eval-card" hidden>
+    <div class="card-h"><div><h2>เทียบกับคำตอบที่ถูก</h2><p class="muted" id="eval-sub"></p></div></div>
+    <div class="tscroll" style="max-height:none"><table class="cmp" id="cmp"></table></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><div><h2>ดาวน์โหลดผลลัพธ์</h2><p class="muted">เปิด corrected.assembly ใน Juicebox ได้ (Assembly → Import Map Assembly) คู่กับไฟล์ .hic ของ draft เดิม</p></div></div>
+    <div class="files" id="files"></div>
+    <p class="note" id="outdir" style="margin-top:10px"></p>
+  </div>
+  </div>
+</section>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

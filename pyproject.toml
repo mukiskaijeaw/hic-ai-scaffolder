@@ -19,3 +19,6 @@ hicscaf = "hicscaf.cli:main"
 
 [tool.setuptools]
 packages = ["hicscaf"]
+
+[tool.setuptools.package-data]
+hicscaf = ["studio_web/*"]
