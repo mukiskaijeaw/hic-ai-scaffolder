@@ -164,75 +164,128 @@ def _order_group(members: list[int], ua, pa_u, ub, pb_u, w, ulen):
         paths.append(path)
     paths.sort(key=lambda p: -sum(ulen[u] for u, _ in p))
     order = [x for p in paths for x in p]
-    if len(a) and n > 2:
-        order = _refine_order(order, a, pa, b, pb, ww, ulen)
-    return order
+    if not len(a) or n <= 2:
+        return order
+    prob = _OrderCost(members, a, pa, b, pb, ww, ulen)
+    best = None
+    for init in (order, _spectral_order(members, a, pa, b, pb, ww, ulen)):
+        cand, c = prob.refine(init)
+        if best is None or c < best[1]:
+            best = (cand, c)
+    return best[0]
 
 
-def _refine_order(order, a, pa, b, pb, w, ulen, bin_bp: int = 25_000, window: int = 4, max_pass: int = 4,
-                  budget_s: float = 20.0):
-    """Local search on the order/orientation of a group's units.
-
-    Minimises sum(w * log(d + 10 kb)) over inter-unit contacts, d = distance in the joined chromosome
-    (the log-likelihood of a power-law contact decay). Moves: flip one unit, move one unit up to `window`
-    places. Contacts are pooled into `bin_bp` bins inside each unit to keep each evaluation cheap.
-    """
-    import time
-
-    members = [u for u, _ in order]
-    loc = {u: t for t, u in enumerate(members)}
+def _spectral_order(members, a, pa, b, pb, w, ulen):
+    """Global order from the Fiedler vector of the coverage-normalised unit contact matrix,
+    then orient each unit so that its head faces the units placed before it."""
     n = len(members)
+    loc = {u: t for t, u in enumerate(members)}
     ia = np.array([loc[x] for x in a]); ib = np.array([loc[x] for x in b])
+    C = np.zeros((n, n))
+    np.add.at(C, (ia, ib), w)
+    C = C + C.T
+    T = C.sum(1) + 1e-9
+    A = C / np.sqrt(np.outer(T, T))
+    A += 1e-6  # keep the graph connected
+    np.fill_diagonal(A, 0)
+    d = A.sum(1)
+    Lap = np.eye(n) - A / np.sqrt(np.outer(d, d))
+    vals, vecs = np.linalg.eigh(Lap)
+    f = vecs[:, 1] / np.sqrt(d)
+    perm = np.argsort(f)
+    rank = np.empty(n, np.int64); rank[perm] = np.arange(n)
+    # orientation: contacts in the head half vs tail half, weighted by where the partner sits
     lens = np.array([ulen[u] for u in members], np.float64)
-    nb = np.clip(np.ceil(lens / bin_bp), 4, 400)  # >= 4 bins so that flipping a short unit still matters
-    qa = np.minimum((pa / lens[ia] * nb[ia]).astype(np.int64), nb[ia].astype(np.int64) - 1)
-    qb = np.minimum((pb / lens[ib] * nb[ib]).astype(np.int64), nb[ib].astype(np.int64) - 1)
-    key = ((ia * 1000 + qa) * n + ib) * 1000 + qb
-    uk, inv = np.unique(key, return_inverse=True)
-    W = np.bincount(inv, w)
-    first = np.zeros(len(uk), np.int64); first[inv] = np.arange(len(inv))
-    i1, i2 = ia[first], ib[first]
-    c1 = (qa[first] + 0.5) * lens[i1] / nb[i1]
-    c2 = (qb[first] + 0.5) * lens[i2] / nb[i2]
-
-    def cost(perm, st):
-        start = np.empty(n)
-        start[perm] = np.concatenate([[0], np.cumsum(lens[perm])[:-1]])
-        x = start[i1] + np.where(st[i1] > 0, c1, lens[i1] - c1)
-        y = start[i2] + np.where(st[i2] > 0, c2, lens[i2] - c2)
-        return float(np.dot(W, np.log(np.abs(x - y) + 10_000.0)))
-
-    perm = np.arange(n)
-    st = np.array([s for _, s in order])
-    best = cost(perm, st)
-    t0 = time.time()
-    for _ in range(max_pass):
-        improved = False
-        for k in range(n):
-            if time.time() - t0 > budget_s:
-                break
-            u = perm[k]
-            st[u] = -st[u]
-            c = cost(perm, st)
-            if c < best - 1e-9:
-                best, improved = c, True
-            else:
-                st[u] = -st[u]
-            pos = int(np.where(perm == u)[0][0])
-            rest = np.delete(perm, pos)
-            bj, bc = None, best
-            for j in range(max(0, pos - window), min(n - 1, pos + window) + 1):
-                if j == pos:
-                    continue
-                cand = np.insert(rest, j, u)
-                c = cost(cand, st)
-                if c < bc - 1e-9:
-                    bj, bc = cand, c
-            if bj is not None:
-                perm, best, improved = bj, bc, True
-        if not improved:
-            break
+    st = np.ones(n, np.int64)
+    score = np.zeros(n)
+    for x, px, y in ((ia, pa, ib), (ib, pb, ia)):
+        head = px < lens[x] / 2
+        sgn = np.sign(rank[y] - rank[x])  # partner after (+) or before (-)
+        np.add.at(score, x, w * sgn * np.where(head, -1.0, 1.0))  # tail should face later units
+    st[score < 0] = -1
     return [(members[i], int(st[i])) for i in perm]
+
+
+class _OrderCost:
+    """sum(w * log(d + 10 kb)) over a group's inter-unit contacts, d = distance in the joined chromosome
+    (the log-likelihood of a power-law contact decay). Contacts are pooled into `bin_bp` bins inside each
+    unit to keep each evaluation cheap."""
+
+    def __init__(self, members, a, pa, b, pb, w, ulen, bin_bp: int = 25_000):
+        self.members = list(members)
+        loc = {u: t for t, u in enumerate(members)}
+        n = self.n = len(members)
+        ia = np.array([loc[x] for x in a]); ib = np.array([loc[x] for x in b])
+        lens = self.lens = np.array([ulen[u] for u in members], np.float64)
+        nb = np.clip(np.ceil(lens / bin_bp), 4, 400)  # >= 4 bins so that flipping a short unit still matters
+        qa = np.minimum((pa / lens[ia] * nb[ia]).astype(np.int64), nb[ia].astype(np.int64) - 1)
+        qb = np.minimum((pb / lens[ib] * nb[ib]).astype(np.int64), nb[ib].astype(np.int64) - 1)
+        key = ((ia * 1000 + qa) * n + ib) * 1000 + qb
+        uk, inv = np.unique(key, return_inverse=True)
+        self.W = np.bincount(inv, w)
+        first = np.zeros(len(uk), np.int64); first[inv] = np.arange(len(inv))
+        self.i1, self.i2 = ia[first], ib[first]
+        self.c1 = (qa[first] + 0.5) * lens[self.i1] / nb[self.i1]
+        self.c2 = (qb[first] + 0.5) * lens[self.i2] / nb[self.i2]
+
+    def cost(self, perm, st):
+        lens, i1, i2 = self.lens, self.i1, self.i2
+        start = np.empty(self.n)
+        start[perm] = np.concatenate([[0], np.cumsum(lens[perm])[:-1]])
+        x = start[i1] + np.where(st[i1] > 0, self.c1, lens[i1] - self.c1)
+        y = start[i2] + np.where(st[i2] > 0, self.c2, lens[i2] - self.c2)
+        return float(np.dot(self.W, np.log(np.abs(x - y) + 10_000.0)))
+
+    def refine(self, order, window: int = 4, max_seg: int = 8, max_pass: int = 4, budget_s: float = 20.0):
+        """Local search. Moves: flip one unit; move one unit up to `window` places; reverse a run of
+        up to `max_seg` units (2-opt, also flips them). Returns (order, cost)."""
+        import time
+
+        loc = {u: t for t, u in enumerate(self.members)}
+        n = self.n
+        perm = np.array([loc[u] for u, _ in order])
+        st = np.ones(n, np.int64)
+        for u, s in order:
+            st[loc[u]] = s
+        best = self.cost(perm, st)
+        t0 = time.time()
+        for _ in range(max_pass):
+            improved = False
+            for k in range(n):
+                if time.time() - t0 > budget_s:
+                    break
+                u = perm[k]
+                st[u] = -st[u]
+                c = self.cost(perm, st)
+                if c < best - 1e-9:
+                    best, improved = c, True
+                else:
+                    st[u] = -st[u]
+                pos = int(np.where(perm == u)[0][0])
+                rest = np.delete(perm, pos)
+                bj, bc = None, best
+                for j in range(max(0, pos - window), min(n - 1, pos + window) + 1):
+                    if j == pos:
+                        continue
+                    cand = np.insert(rest, j, u)
+                    c = self.cost(cand, st)
+                    if c < bc - 1e-9:
+                        bj, bc = cand, c
+                if bj is not None:
+                    perm, best, improved = bj, bc, True
+                # reverse runs starting here
+                for L in range(2, min(max_seg, n - k) + 1):
+                    seg = perm[k:k + L]
+                    cand = perm.copy(); cand[k:k + L] = seg[::-1]
+                    st[seg] = -st[seg]
+                    c = self.cost(cand, st)
+                    if c < best - 1e-9:
+                        perm, best, improved = cand, c, True
+                        break
+                    st[seg] = -st[seg]
+            if not improved:
+                break
+        return [(self.members[i], int(st[i])) for i in perm], best
 
 
 def group_chromosomes(cs, mapped, scafs: list[Scaffold], n_chrom: int, min_len: int = 50_000, method: str = "density",
