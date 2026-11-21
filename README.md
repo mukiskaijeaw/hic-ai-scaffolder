@@ -110,6 +110,12 @@ hicscaf correct --contigs contigs.fa --pairs hic.pairs.gz --agp 3ddna.agp -o hic
 
 `--min-prob` (ค่าเริ่ม 0.5) คุมความเข้ม: สูงขึ้น = ต่อน้อยลงแต่แม่นขึ้น
 
+**รู้จำนวนโครโมโซม?** ใส่ `--n-chrom N` (จำนวนชุดเดียว haploid n เช่น 2n = 14 ใส่ 7) ใน `correct` หรือ `refine`
+ระบบจะจัด scaffold/contig เป็น N กลุ่มด้วยความหนาแน่นของ contact (average linkage แบบ LACHESIS / ALLHiC `-k`),
+ใส่ชิ้นเล็กเข้ากลุ่มที่ contact ชัดเจน แล้วเรียงลำดับและกลับทิศในแต่ละกลุ่ม (ต่อปลายที่ contact แน่นที่สุด +
+local search ที่ minimise Σ w·log(ระยะ)) ได้ `chr1..chrN` และ `unplaced_*` สำหรับชิ้นที่สัญญาณไม่พอ
+ใน Studio ใส่ได้ที่ "จำนวนโครโมโซม" และเปลี่ยนได้ในหน้าผลลัพธ์โดยไม่ต้องรันใหม่
+
 ถ้าไม่มี `bwa`/`samtools` และมี Hi-C เป็น `.bed` แบบ YaHS อยู่แล้ว ส่งไฟล์ `.bed(.gz)` ให้ `--pairs` ได้ตรงๆ
 
 ---
@@ -222,6 +228,7 @@ hicscaf/
   features.py   graph features (end contacts หลายสเกล), contact-map patch รอบรอยต่อ
   models.py     JunctionCNN, EdgeGNN
   scaffold.py   inference + greedy decoder + baseline ที่ไม่ใช้ AI
+  grouping.py   --n-chrom: จัดกลุ่มเป็นโครโมโซม แล้วเรียง/กลับทิศในแต่ละกลุ่ม
   train.py      ฝึก CNN → GNN
   evaluate.py   ตัวชี้วัด
   precomputed.py อ่าน .assembly / .hic / .mcool (ใช้ผลสำเร็จรูปโดยไม่ต้องมี raw reads)

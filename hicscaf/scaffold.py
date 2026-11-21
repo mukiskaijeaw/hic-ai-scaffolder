@@ -93,10 +93,16 @@ def greedy_decode(cs: ComponentSet, edges: np.ndarray, probs: np.ndarray, min_pr
     return [Scaffold(f"{prefix}{i + 1}", p) for i, p in enumerate(scafs)]
 
 
-def correct(lengths, contacts, draft, cnn, gnn, min_prob=0.5, bin_size=None):
+def correct(lengths, contacts, draft, cnn, gnn, min_prob=0.5, bin_size=None, n_chrom: int = 0):
+    """n_chrom > 0: afterwards group the scaffolds into that many chromosomes (see grouping.py)."""
     cs, g, *_ = prepare(lengths, contacts, draft, cnn, bin_size)
     probs = edge_probs(gnn, g)
-    return greedy_decode(cs, g.edge_index, probs, min_prob)
+    scafs = greedy_decode(cs, g.edge_index, probs, min_prob)
+    if n_chrom:
+        from .features import map_contacts
+        from .grouping import group_chromosomes
+        scafs = group_chromosomes(cs, map_contacts(cs, contacts), scafs, n_chrom)
+    return scafs
 
 
 def heuristic_probs(g) -> np.ndarray:
