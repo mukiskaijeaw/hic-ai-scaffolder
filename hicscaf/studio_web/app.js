@@ -64,7 +64,7 @@ async function loadEnv(){try{S.env=await api("/api/env")}catch(e){$("#envbox").t
   const e=S.env;if(e.model)$("#model").value=e.model;
   const bits=[];bits.push(e.torch?"✓ PyTorch":"✗ ไม่พบ PyTorch (pip install torch)");
   bits.push(e.model?"✓ โมเดล":"✗ ไม่พบ models/hicscaf.pt");
-  bits.push(e.hicstraw?"✓ อ่าน .hic ได้ (hic-straw)":e.java&&e.juicer_tools?"✓ อ่าน .hic ผ่าน juicer_tools":"• อ่าน .hic ต้องติดตั้ง hic-straw หรือใส่ juicer_tools.jar");
+  bits.push("✓ อ่าน .hic ได้ (ตัวอ่านในตัว ไม่ต้องติดตั้งเพิ่ม)");
   bits.push(e.cooler?"✓ อ่าน .mcool ได้":"• อ่าน .mcool ต้องติดตั้ง cooler");
   $("#envbox").innerHTML=bits.map(esc).join("<br>")}
 async function loadHistory(){try{const js=await api("/api/jobs");$("#history-card").hidden=!js.length;
