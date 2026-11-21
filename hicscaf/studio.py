@@ -530,6 +530,18 @@ class Handler(BaseHTTPRequestHandler):
             self._err(str(e), 500)
 
 
+class StudioServer(ThreadingHTTPServer):
+    # On Windows SO_REUSEADDR lets bind() succeed on a port another program already uses,
+    # so the free-port probe below would silently shadow it. Use exclusive binding there.
+    allow_reuse_address = os.name != "nt"
+
+    def server_bind(self):
+        import socket
+        if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 def serve(host="127.0.0.1", port=8765, workdir=None, open_browser=True):
     if workdir:
         Handler.workdir = Path(workdir)
@@ -537,7 +549,7 @@ def serve(host="127.0.0.1", port=8765, workdir=None, open_browser=True):
     srv = None
     for p in range(port, port + 20):
         try:
-            srv = ThreadingHTTPServer((host, p), Handler)
+            srv = StudioServer((host, p), Handler)
             port = p
             break
         except OSError:
@@ -545,9 +557,9 @@ def serve(host="127.0.0.1", port=8765, workdir=None, open_browser=True):
     if srv is None:
         raise SystemExit(f"ไม่มี port ว่างระหว่าง {port}-{port + 19}")
     url = f"http://{'127.0.0.1' if host in ('0.0.0.0', '') else host}:{port}/"
-    print(f"hicscaf Studio พร้อมใช้งานที่ {url}")
-    print(f"ไฟล์งานเก็บที่ {Handler.workdir}")
-    print("ปิดหน้าต่างนี้ (หรือกด Ctrl+C) เพื่อหยุดโปรแกรม")
+    print(f"hicscaf Studio พร้อมใช้งานที่ {url}", flush=True)
+    print(f"ไฟล์งานเก็บที่ {Handler.workdir}", flush=True)
+    print("ปิดหน้าต่างนี้ (หรือกด Ctrl+C) เพื่อหยุดโปรแกรม", flush=True)
     if open_browser:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
